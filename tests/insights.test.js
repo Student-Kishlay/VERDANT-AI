@@ -28,6 +28,13 @@ async function getForecast(base, token, datasetId, horizonDays) {
   return { status: res.status, body: await res.json() };
 }
 
+async function getSegments(base, token, datasetId) {
+  const res = await fetch(`${base}/api/datasets/${datasetId}/segments`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return { status: res.status, body: await res.json() };
+}
+
 test('GET .../forecast returns a non-negative series of the requested length', async () => {
   const { server, base } = await startServer();
   try {
@@ -95,6 +102,50 @@ test('a user outside the workspace cannot read its forecast', async () => {
     const dataset = await uploadFixture(base, owner.token, owner.workspace.id, 'dashboard-sales.csv');
 
     const { status } = await getForecast(base, outsider.token, dataset.id, 7);
+    assert.equal(status, 404);
+  } finally {
+    server.close();
+  }
+});
+
+test('GET .../segments returns all 6 labels end to end after upload', async () => {
+  const { server, base } = await startServer();
+  try {
+    const { token, workspace } = await signupAndGetSession(base, 'segments-owner@example.com');
+    const dataset = await uploadFixture(base, token, workspace.id, 'segmentation-sales.csv');
+
+    const { status, body } = await getSegments(base, token, dataset.id);
+    assert.equal(status, 200);
+    assert.equal(body.data.segmentation.available, true);
+    assert.equal(body.data.segmentation.segments.length, 10);
+    assert.equal(body.data.segmentation.summary_by_label.length, 6);
+  } finally {
+    server.close();
+  }
+});
+
+test('recomputing segments replaces the set rather than duplicating it', async () => {
+  const { server, base, db } = await startServer();
+  try {
+    const { token, workspace } = await signupAndGetSession(base, 'segments-recompute@example.com');
+    const dataset = await uploadFixture(base, token, workspace.id, 'segmentation-sales.csv');
+
+    await getSegments(base, token, dataset.id);
+    await getSegments(base, token, dataset.id);
+    assert.equal(db.getSegments(dataset.id).length, 10);
+  } finally {
+    server.close();
+  }
+});
+
+test('a user outside the workspace cannot read its segments', async () => {
+  const { server, base } = await startServer();
+  try {
+    const owner = await signupAndGetSession(base, 'segments-owner2@example.com');
+    const outsider = await signupAndGetSession(base, 'segments-outsider@example.com');
+    const dataset = await uploadFixture(base, owner.token, owner.workspace.id, 'segmentation-sales.csv');
+
+    const { status } = await getSegments(base, outsider.token, dataset.id);
     assert.equal(status, 404);
   } finally {
     server.close();

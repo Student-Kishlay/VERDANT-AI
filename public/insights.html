@@ -6,6 +6,7 @@
   <title>Insights — Verdant BI</title>
   <link rel="stylesheet" href="/css/base.css" />
   <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/pages/home.css" />
   <link rel="stylesheet" href="/css/pages/insights.css" />
 </head>
 <body>
@@ -50,9 +51,18 @@
           </section>
 
           <section id="tab-segmentation" class="tab-panel" hidden>
-            <div class="card empty-state">
-              <h3>Customer Segmentation ships in Milestone 5b</h3>
-              <p>RFM-based segments (Champions, Loyal, New Customers, At Risk, Lost, Potential) will appear here.</p>
+            <div id="segmentation-unavailable-state" class="card empty-state" hidden>
+              <h3>Missing required columns</h3>
+              <p id="segmentation-unavailable-message"></p>
+              <p><a href="/upload.html">Review column roles on the Upload &amp; Clean page →</a></p>
+            </div>
+
+            <div id="segmentation-content" hidden>
+              <section class="stat-grid" id="segment-cards" aria-label="RFM segments"></section>
+              <div class="card chart-card">
+                <h3>Customers per Segment</h3>
+                <div class="chart-wrap"><canvas id="segment-mix-chart"></canvas></div>
+              </div>
             </div>
           </section>
 

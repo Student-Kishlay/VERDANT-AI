@@ -8,6 +8,7 @@ import { cleanDataset } from '../server/pipeline/clean-dataset.js';
 import { detectColumns } from '../server/pipeline/detect-columns.js';
 import { computeKpis } from '../server/pipeline/compute-kpis.js';
 import { forecastRevenue } from '../server/pipeline/forecast-revenue.js';
+import { segmentCustomers } from '../server/pipeline/segment-customers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
@@ -220,4 +221,74 @@ test('forecastRevenue reports missing columns instead of guessing', () => {
   });
   assert.equal(result.available, false);
   assert.deepEqual(result.missing.sort(), ['date', 'revenue']);
+});
+
+const SEGMENT_COLUMNS = [
+  { column_name: 'order_date', effective_role: 'date' },
+  { column_name: 'customer_name', effective_role: 'customer' },
+  { column_name: 'revenue', effective_role: 'revenue' },
+];
+
+// Hand-computed against tests/fixtures/segmentation-sales.csv: 10 customers,
+// R/F/M independently ranked so each quantile bucket (1-5) holds exactly 2
+// customers. See the Milestone 5b plan for the full derivation. Expected
+// labels per the classify() priority table in segment-customers.js.
+async function loadSegmentationFixture() {
+  const { headers, rows } = await loadFixture('segmentation-sales.csv');
+  const cleaned = cleanDataset(headers, rows);
+  return cleaned.rows;
+}
+
+test('segmentCustomers: all 6 RFM labels appear, and each customer matches the hand-computed label', async () => {
+  const rows = await loadSegmentationFixture();
+  const result = segmentCustomers(SEGMENT_COLUMNS, rows);
+
+  assert.equal(result.available, true);
+  assert.equal(result.segments.length, 10);
+
+  const labelByCustomer = Object.fromEntries(result.segments.map((s) => [s.customer_key, s.rfm_segment]));
+  assert.deepEqual(labelByCustomer, {
+    C1: 'Champions',
+    C2: 'Loyal',
+    C3: 'New Customers',
+    C7: 'New Customers',
+    C4: 'At Risk',
+    C8: 'At Risk',
+    C5: 'Lost',
+    C9: 'Lost',
+    C6: 'Potential',
+    C10: 'Potential',
+  });
+
+  const allLabels = new Set(result.segments.map((s) => s.rfm_segment));
+  assert.deepEqual(
+    [...allLabels].sort(),
+    ['At Risk', 'Champions', 'Loyal', 'Lost', 'New Customers', 'Potential'].sort()
+  );
+});
+
+test('segmentCustomers: summary_by_label sizes sum to the total customer count', async () => {
+  const rows = await loadSegmentationFixture();
+  const result = segmentCustomers(SEGMENT_COLUMNS, rows);
+  const totalSize = result.summary_by_label.reduce((sum, b) => sum + b.size, 0);
+  assert.equal(totalSize, 10);
+
+  // C1 alone is Champions and C2 alone is Loyal (by design, each has a
+  // distinct enough R/F/M profile not to share the label with anyone else);
+  // the other four labels each catch exactly 2 customers.
+  const sizeByLabel = Object.fromEntries(result.summary_by_label.map((b) => [b.segment, b.size]));
+  assert.deepEqual(sizeByLabel, {
+    Champions: 1,
+    Loyal: 1,
+    'New Customers': 2,
+    'At Risk': 2,
+    Lost: 2,
+    Potential: 2,
+  });
+});
+
+test('segmentCustomers reports missing columns instead of guessing', () => {
+  const result = segmentCustomers([{ column_name: 'notes', effective_role: null }], [{ notes: 'hi' }]);
+  assert.equal(result.available, false);
+  assert.deepEqual(result.missing.sort(), ['customer', 'date', 'revenue']);
 });

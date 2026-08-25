@@ -184,3 +184,48 @@ append-only log.
 
 **Error codes:** `NOT_FOUND`, `NOT_READY`, `INVALID_INPUT` (unsupported
 `horizon_days`).
+
+## `segment-customers`
+
+Implemented as `GET /api/datasets/:id/segments` (no request body/params —
+always recomputes over the full dataset).
+
+**Response (available):**
+
+```json
+{ "ok": true, "data": { "segmentation": {
+  "available": true,
+  "segments": [{
+    "customer_key": "C1", "recency_days": 2, "frequency": 5, "monetary": 950,
+    "recency_score": 5, "frequency_score": 5, "monetary_score": 5,
+    "rfm_segment": "Champions", "methodology_version": 1
+  }],
+  "summary_by_label": [{ "segment": "Champions", "size": 1, "avg_revenue": 950, "avg_recency": 2 }],
+  "methodology_version": 1
+} } }
+```
+
+**Response (missing required columns)** — same `{ available: false, missing }`
+shape as `compute-kpis`/`forecast-revenue`; `segment-customers` additionally
+requires the `customer` role (KPIs/forecast only need `date` + `revenue`).
+
+**Methodology (§9), concrete choices where the spec leaves the mechanics
+open:** per customer, `frequency` = row count, `monetary` = revenue sum,
+`recency_days` = days between the dataset's max transaction date and that
+customer's own max transaction date (derived from the data, not wall-clock
+time). Each of R/F/M is quantile-bucketed 1-5 via one shared ascending
+`quantileScore` helper (ties broken by customer key for determinism) — for
+recency the value fed in is negated first, so "fewest days since last
+purchase" still maps to the highest score. Scores map to one of the six
+labels via a priority-ordered rule table (see
+`server/pipeline/segment-customers.js#classify`): Champions
+(R≥4,F≥4,M≥4) → Loyal (R≥3,F≥4) → New Customers (R≥4,F≤2) → At Risk
+(R≤2, F≥3 or M≥3) → Lost (R≤2,F≤2,M≤2) → Potential (everything else).
+
+**Recompute semantics:** unlike `forecast-revenue` (an append-only log of
+point-in-time projections), segments represent the dataset's *current*
+classification — each call **replaces** the full set via
+`server/db.js#setSegments`, the same replace-all pattern already used for
+`column_maps`, so a methodology change can never leave a mixed old/new set.
+
+**Error codes:** `NOT_FOUND`, `NOT_READY`.

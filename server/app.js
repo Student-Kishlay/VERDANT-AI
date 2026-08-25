@@ -13,6 +13,7 @@ import { detectColumns } from './pipeline/detect-columns.js';
 import { parseSpreadsheet } from './pipeline/parse-spreadsheet.js';
 import { computeKpis } from './pipeline/compute-kpis.js';
 import { forecastRevenue } from './pipeline/forecast-revenue.js';
+import { segmentCustomers } from './pipeline/segment-customers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -369,6 +370,25 @@ export function createApp(db, { jwtSecret, storage, config } = {}) {
       });
     }
     return ok(res, { forecast: result });
+  });
+
+  // ── Insights: Customer Segmentation / RFM (Milestone 5b) ────────────────
+
+  app.get('/api/datasets/:id/segments', requireAuth, (req, res) => {
+    const dataset = getAccessibleDataset(req);
+    if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
+    if (dataset.status !== 'ready') {
+      return fail(res, 409, 'NOT_READY', `Dataset is ${dataset.status}, not ready.`);
+    }
+
+    const columns = db.getColumnMaps(dataset.id).map(withEffectiveRole);
+    const rows = db.getAllDatasetRows(dataset.id);
+
+    const result = segmentCustomers(columns, rows);
+    if (result.available) {
+      db.setSegments(dataset.id, result.segments);
+    }
+    return ok(res, { segmentation: result });
   });
 
   return app;

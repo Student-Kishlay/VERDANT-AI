@@ -16,6 +16,7 @@ const EMPTY_DATA = {
   column_maps: [],
   dataset_rows: [],
   forecasts: [],
+  segments: [],
 };
 
 export function createDb(filePath) {
@@ -221,6 +222,22 @@ export function createDb(filePath) {
 
     listForecasts(datasetId) {
       return data.forecasts.filter((f) => f.dataset_id === datasetId);
+    },
+
+    // ── segments ──────────────────────────────────────────────────────────
+    // Replace-all, same pattern as setColumnMaps — segments are a "current
+    // classification," not a historical log, so a recompute replaces the
+    // full set atomically rather than accumulating duplicates.
+    setSegments(datasetId, segments) {
+      data.segments = data.segments.filter((s) => s.dataset_id !== datasetId);
+      for (const s of segments) {
+        data.segments.push({ id: randomUUID(), dataset_id: datasetId, computed_at: new Date().toISOString(), ...s });
+      }
+      persist();
+    },
+
+    getSegments(datasetId) {
+      return data.segments.filter((s) => s.dataset_id === datasetId);
     },
   };
 }

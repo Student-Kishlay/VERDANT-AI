@@ -1,38 +1,44 @@
 # Architecture — current (mock) vs. target (InsForge)
 
-## Current: local mock backend (Milestones 1-3)
+## Current: local mock backend (Milestones 1-10 of 10)
 
 ```
 Browser (public/, vanilla HTML/CSS/JS, no build step)
    │  fetch() via public/js/insforge-client.js
    ▼
 server/app.js (Express)
- ├─ POST /api/auth/signup, /api/auth/login   (bcrypt + JWT)
- ├─ GET  /api/auth/me
- ├─ GET  /api/workspaces
- ├─ POST /api/workspaces/:id/switch
- ├─ GET  /api/config
- ├─ POST /api/datasets/upload  ──► server/pipeline/parse-spreadsheet.js
- │                                 server/pipeline/clean-dataset.js   (§5)
- │                                 server/pipeline/detect-columns.js  (§6)
- ├─ GET  /api/datasets, /api/datasets/:id
- ├─ POST /api/datasets/:id/columns/:column_name/override
- └─ DELETE /api/datasets/:id
-   │                                    │
-   ▼                                    ▼
-server/db.js — JSON-file store    server/storage.js — raw uploads on disk
- └─ users, workspaces,                 (server/data/uploads/)
-    workspace_members, datasets,
-    column_maps, dataset_rows
-    (subset of db/schema.sql — the real target schema)
+ ├─ Auth/workspaces: signup, login, /me, list/switch/create workspaces,
+ │  members, invitations                                          (§12)
+ ├─ GET  /api/config  (public; every .env value the client needs, never a secret)
+ ├─ POST /api/datasets/upload  ──► parse-spreadsheet.js
+ │                                 clean-dataset.js         (§5)
+ │                                 detect-columns.js        (§6)
+ ├─ GET/DELETE /api/datasets/:id, column overrides
+ ├─ GET  /api/datasets/:id/kpis        ──► compute-kpis.js       (§7)
+ ├─ GET  /api/datasets/:id/forecast    ──► forecast-revenue.js   (§8)
+ ├─ GET  /api/datasets/:id/segments    ──► segment-customers.js  (§9)
+ ├─ GET  /api/datasets/:id/anomalies   ──► detect-anomalies.js   (§10)
+ ├─ GET/POST /api/chat                 ──► build-context-summary.js,
+ │                                         verify-chart-grounding.js,
+ │                                         llm/ (mock + groq providers) (§11)
+ ├─ POST /api/datasets/:id/reports     ──► generate-report.js    (§13)
+ └─ GET/POST /api/shares/..., GET /public/shares/:token (unauthenticated)
+   │                                    │                    │
+   ▼                                    ▼                    ▼
+server/db.js — JSON-file store    server/storage.js      server/rate-limiter.js
+ └─ every table in db/schema.sql    (uploads + reports,   (in-memory, per-workspace,
+    (subset actually used by         server/data/*)        AI Chat abuse control)
+    the mock; same columns)
 ```
 
 Every request that touches workspace data resolves the caller's identity from
 the JWT (`requireAuth` in `server/app.js`) and filters strictly through
 `workspace_members`, the same isolation boundary the real schema enforces via
-Postgres Row-Level Security (see `db/schema.sql`).
+Postgres Row-Level Security (see `db/schema.sql`) — with three routes
+(`DELETE /api/datasets/:id`, share refresh/revoke) additionally requiring the
+`owner` role, not just membership, per §12.
 
-## Target: InsForge (from Milestone 3 onward, once credentials exist)
+## Target: InsForge (once credentials exist)
 
 ```
 Browser (same public/ code, unchanged)

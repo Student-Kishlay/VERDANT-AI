@@ -99,7 +99,16 @@ everywhere per §6.
 
 ## Supporting routes (not in §5.5, added for Milestone 3)
 
-- `GET /api/config` — `{ maxUploadFileSizeMb, maxUploadRowCount, allowedFileTypes }`, sourced from `.env`.
+- `GET /api/config` — public, unauthenticated; every `.env`-driven value the
+  client legitimately needs, and **never** a secret (`groqApiKey` is
+  explicitly stripped before the response — see the security note in
+  Milestone 6's history). Current shape:
+  `{ maxUploadFileSizeMb, maxUploadRowCount, allowedFileTypes,
+  anomalyContaminationRate, aiProvider, groqModel, chartGroundingThreshold,
+  aiChatMaxMessagesPerWorkspacePerHour, aiChatMaxContextTokens,
+  defaultShareLinkExpiryDays }`. This list grew across Milestones 5c/6/7 as
+  each added its own configurable value — check `DEFAULT_CONFIG` in
+  `server/app.js` directly if this drifts again.
 - `GET /api/datasets?workspace_id=...` — list datasets in a workspace.
 - `GET /api/datasets/:id` — fetch one (used for upload-status polling and the sidebar's active-dataset indicator).
 - `DELETE /api/datasets/:id` — remove a dataset, its rows, column maps, and stored file.
@@ -355,9 +364,9 @@ fresh issue.
 
 - `POST /api/datasets/:id/reports` (`{ report_type }`, one of
   `analytics_summary` | `sales_forecast` | `customer_segmentation` |
-  `cleaned_dataset`) → `{ share: { id, report_type, url, created_at,
-  expires_at, revoked, status } }`. `status` is derived (`active` |
-  `expired` | `revoked`), not stored redundantly.
+  `cleaned_dataset`) → `{ share: { id, workspace_id, dataset_id, report_type,
+  url, created_at, expires_at, revoked, status } }`. `status` is derived
+  (`active` | `expired` | `revoked`), not stored redundantly.
 - `GET /api/datasets/:id/reports` — shares for one dataset (`/reports.html`).
 - `GET /api/workspaces/:id/shares` — every share in a workspace (`/shares.html`).
 - `POST /api/shares/:id/refresh` / `POST /api/shares/:id/revoke` —
@@ -384,15 +393,16 @@ export of the dataset's cleaned rows.
 
 - `POST /api/workspaces` (`{ name }`) — any authenticated user; creates a
   `type: 'team'` workspace with the caller as `owner`.
-- `GET /api/workspaces/:id/members` — any member; active members
-  (name/email/role) plus pending invitations (email, `status: 'pending'`).
+- `GET /api/workspaces/:id/members` — any member →
+  `{ members: [{ user_id, display_name, email, role, joined_at }],
+  pending_invitations: [{ invited_email, status: 'pending', created_at }] }`.
 - `POST /api/workspaces/:id/invitations` (`{ email }`) — **owner-only**. An
-  email matching an existing user grants membership immediately
-  (`{ status: 'joined' }`); otherwise a `workspace_invitations` row is
-  created (`{ status: 'pending' }`) and converts to membership automatically
-  the moment that exact email signs up (handled in `POST /api/auth/signup`).
-  Inviting the same pending email twice reuses the existing invitation
-  rather than duplicating it.
+  email matching an existing user grants membership immediately →
+  `{ status: 'joined', member: {...} }`; otherwise a `workspace_invitations`
+  row is created → `{ status: 'pending', invitation: {...} }`, and converts
+  to membership automatically the moment that exact email signs up (handled
+  in `POST /api/auth/signup`). Inviting the same pending email twice reuses
+  the existing invitation rather than duplicating it.
 
 **Role enforcement added this milestone.** §12: *"owners can manage
 membership, delete datasets, revoke share links; members can view data, run

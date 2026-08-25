@@ -4,7 +4,7 @@ Zero-configuration, self-service BI platform: upload a sales spreadsheet, get
 cleaned data, KPI dashboards, forecasts, RFM segmentation, anomaly detection,
 and a grounded AI chat assistant. Full spec: `Verdant_BI_Master_Prompt_v2.md`.
 
-## Current status: Milestones 1-9 of 10
+## Current status: Milestones 1-10 of 10 (against the local mock backend)
 
 This build has no InsForge project/credentials connected yet, so it currently
 runs against a **local mock backend** (`server/`) that implements the same
@@ -97,10 +97,34 @@ Done so far:
   wouldn't have caught it) and fixed by removing the wrapper's box
   entirely (`display: contents`) at the mobile breakpoint.
 
-Not yet built (Milestone 10): the full §15 test suite as one reviewed
-sweep, final docs, and deployment prep. It's its own milestone with its own
-review checkpoint, per the master prompt's own working rule (§0.5/§19) —
-don't assume anything past Milestone 9 is implemented.
+- Testing + docs (§17 Milestone 10, the final one): closed the one real gap
+  found in the §15 checklist audit — a permanent static guard
+  (`tests/xss-guard.test.js`) that fails the build if any frontend script
+  ever assigns to `.innerHTML`, since that's the actual invariant that makes
+  "renders as inert text everywhere" (dashboard/chat/reports) hold by
+  construction, and the prior XSS checks were all one-off scripts deleted
+  after use. Corrected two accuracy drifts in
+  `docs/edge-function-contracts.md` (a `GET /api/config` shape documented
+  back in Milestone 3, since grown by three later milestones; two response
+  shapes missing fields the actual code returns) and added the missing
+  Deployment section below. A consolidated single-session Playwright pass
+  (signup → upload → dashboard → all 3 insights tabs → chat → reports →
+  shares → team) and a dedicated dashboard/report XSS check both passed
+  with zero console errors.
+
+**What "10 of 10" actually means here — read this before assuming more than
+is true:** every milestone's acceptance criteria are met **against the
+local mock backend** (`server/`), verified by 86 automated tests plus a
+live browser pass each milestone. Three things are explicitly *not* done:
+(1) no real InsForge project is connected — everything InsForge-specific
+(§0.5's MCP-driven setup, the actual Postgres/Auth/Storage/Edge Function
+deployment, §18's deploy steps) is documented and ready but never executed;
+(2) the real Groq LLM provider (`server/llm/groq-provider.js`) is
+implemented but has never been called with a live API key; (3)
+`functions/` (the real InsForge Edge Function targets) are still
+placeholders — the equivalent logic lives in `server/pipeline/` today.
+`docs/architecture.md` and the Deployment section below spell out exactly
+what changes when any of these three become real.
 
 ## Running it
 
@@ -119,12 +143,49 @@ page with the sidebar/workspace switcher/user chip working.
 npm test
 ```
 
-Covers: signup → login → session flow, wrong-password/duplicate-email
-rejection, workspace isolation (a user cannot see or switch into a workspace
-they don't belong to), the `escapeHtml()` XSS-safety helper, the cleaning
-pipeline's exact hand-computed output on a fixture, column-role detection,
-and the upload endpoint (idempotent re-upload, size/type/row-count limits,
-malformed-file failure state, cross-workspace isolation).
+86 tests across `tests/*.test.js`, mapped to the master prompt's §15
+checklist:
+
+- **Auth & isolation** (`auth.test.js`, `isolation.test.js`, and a
+  cross-workspace check in every other test file): signup/login/session,
+  wrong-password/duplicate-email rejection, a user outside a workspace
+  gets 404/zero rows on every dataset-scoped route, not just one.
+- **Cleaning pipeline & column detection** (`pipeline.test.js`): exact
+  hand-computed cleaning-summary output on a fixture, determinism (same
+  input twice → identical output), column-role detection + override
+  precedence.
+- **Upload edge cases** (`upload.test.js`): idempotent re-upload, oversized/
+  wrong-type/over-row-limit rejection, malformed CSV → `status: 'failed'`
+  with a reason (not a hang).
+- **Analytics** (`pipeline.test.js`, `dashboard.test.js`, `insights.test.js`):
+  KPI totals against hand-computed values including a live server-side
+  filter check, non-negative forecast values (including a case that
+  actually crosses zero and gets floored), all 6 RFM labels present and
+  each customer's label matching a hand-computed table, Isolation Forest
+  flagging exactly 5 designed outliers (no false positives/negatives).
+- **Chart grounding** (`pipeline.test.js`): a fabricated <60%-real-labels
+  spec is rejected, a fully-grounded spec verifies, the 60% boundary itself
+  passes (matching the doc's literal "fewer than 60%" wording).
+- **AI Chat** (`chat.test.js`): grounded answers match real data exactly,
+  a category-breakdown question returns a verified chart, conversation
+  history persists in order, the per-workspace rate limit trips at the
+  configured threshold, `GET /api/config` never leaks the Groq API key.
+- **Reports & sharing** (`reports.test.js`): every generated file's magic
+  bytes are checked (so "opens without corruption" is verified, not
+  assumed), revoking/expiring a share 403s the next access, refreshing
+  issues a working new token and 404s the old one.
+- **Team/roles** (`team.test.js`): immediate membership for an existing
+  invitee, pending-invitation-to-membership conversion on signup, and that
+  a non-owner member is rejected from the three owner-only actions (delete
+  dataset, refresh/revoke a share).
+- **XSS** (`dom-safe.test.js`, `pipeline.test.js`, `chat.test.js`,
+  `xss-guard.test.js`): the `escapeHtml()` helper neutralizes an injected
+  payload, the cleaning pipeline stores a malicious value as-is (sanitizing
+  is a render-time concern, not a storage-time mutation), a chat message
+  containing a payload round-trips unexecuted, and a static guard fails the
+  build if any frontend script ever assigns to `.innerHTML` — the one rule
+  that makes "renders as inert text everywhere" (dashboard/chat/reports)
+  hold by construction rather than by remembering to check each page.
 
 ## Project structure
 
@@ -142,6 +203,34 @@ verdant-bi/
 │   └── edge-function-contracts.md
 └── .env.example
 ```
+
+## Deployment (§18 — not run live in this build)
+
+No InsForge project is connected in this environment, so none of this has
+actually been executed — it's documented precisely so it's ready to run the
+moment a real project exists, rather than skipped because it's untested.
+Per §18, InsForge's hosting deploys the static frontend through a managed
+Vercel deployment under the hood (one InsForge project maps 1:1 to one
+Vercel deployment):
+
+```bash
+npx @insforge/cli                                    # confirm current CLI setup against InsForge's docs first — §0.5
+npx @insforge/cli deployments env set PROJECT_URL=... ANON_KEY=...  # browser-safe values only — never the service-role key
+npx @insforge/cli deployments deploy ./public         # public/ has no build step, deploy it as-is
+```
+
+That gives a live URL at `https://<appkey>.insforge.site` immediately —
+Edge Functions and Postgres are already live the moment they're created in
+InsForge, no separate deploy step for backend logic. A custom domain is
+optional (add it in the InsForge dashboard, point the CNAME it returns) and
+newer, so verify current behavior against InsForge's docs before relying on
+it. Before migrating, re-run `npm test`'s equivalent Edge Function tests and
+the manual Milestone 1-10 acceptance passes against the **live** URL, not
+just localhost — CORS/env misconfigurations often only surface once
+deployed, per §18's own note. If a separate Vercel-native deployment is
+preferred instead, `public/` can be deployed there directly with no
+changes (still no build step) — just add that domain to InsForge's allowed
+CORS origins so the frontend can still reach the InsForge backend.
 
 ## Migrating to real InsForge
 

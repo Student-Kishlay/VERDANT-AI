@@ -4,7 +4,7 @@ Zero-configuration, self-service BI platform: upload a sales spreadsheet, get
 cleaned data, KPI dashboards, forecasts, RFM segmentation, anomaly detection,
 and a grounded AI chat assistant. Full spec: `Verdant_BI_Master_Prompt_v2.md`.
 
-## Current status: Milestones 1-3 of 10
+## Current status: Milestones 1-4 of 10
 
 This build has no InsForge project/credentials connected yet, so it currently
 runs against a **local mock backend** (`server/`) that implements the same
@@ -25,15 +25,20 @@ Done so far:
   and upload validation (type/size/row-count limits). See
   `docs/edge-function-contracts.md` for the `clean-dataset`/`detect-columns`
   request/response contracts.
-- `login.html`, `index.html`, and `upload.html` are fully functional; the
-  remaining 7 pages render the shared shell with an explicit empty state
-  describing which later milestone builds them out.
+- Dashboard (`/dashboard.html`): server-computed KPI cards (Total Revenue,
+  Total Orders, Average Order Value, Active Customers), a Revenue Trend line
+  chart and Category Mix bar chart (Chart.js via CDN), and a date-range +
+  region filter bar that re-fetches from the server on every change rather
+  than filtering a cached row set in the browser (§7).
+- `login.html`, `index.html`, `upload.html`, and `dashboard.html` are fully
+  functional; the remaining 6 pages render the shared shell with an explicit
+  empty state describing which later milestone builds them out.
 
-Not yet built (Milestones 4-10): KPI dashboard, forecasting/segmentation/
-anomaly detection, AI chat + chart grounding, reports & sharing, team
-invitations, and the eventual InsForge migration. Each is its own milestone
-with its own review checkpoint, per the master prompt's own working rule
-(§0.5/§19) — don't assume anything past Milestone 3 is implemented.
+Not yet built (Milestones 5-10): forecasting/segmentation/anomaly detection,
+AI chat + chart grounding, reports & sharing, team invitations, and the
+eventual InsForge migration. Each is its own milestone with its own review
+checkpoint, per the master prompt's own working rule (§0.5/§19) — don't
+assume anything past Milestone 4 is implemented.
 
 ## Running it
 

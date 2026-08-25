@@ -114,6 +114,14 @@ export const insforge = {
     remove(id) {
       return request(`/api/datasets/${id}`, { method: 'DELETE' });
     },
+    getKpis(id, { startDate, endDate, region } = {}) {
+      const params = new URLSearchParams();
+      if (startDate) params.set('start_date', startDate);
+      if (endDate) params.set('end_date', endDate);
+      if (region) params.set('region', region);
+      const qs = params.toString();
+      return request(`/api/datasets/${id}/kpis${qs ? `?${qs}` : ''}`);
+    },
     // "Active dataset" has no server-side concept (mirrors the target
     // schema, which has no such column either) — it's just "the last
     // dataset this browser uploaded/viewed for this workspace."

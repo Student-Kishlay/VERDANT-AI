@@ -6,6 +6,8 @@
   <title>Dashboard — Verdant BI</title>
   <link rel="stylesheet" href="/css/base.css" />
   <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/pages/home.css" />
+  <link rel="stylesheet" href="/css/pages/dashboard.css" />
 </head>
 <body>
   <div class="app-layout">
@@ -13,13 +15,74 @@
     <div class="app-main">
       <header id="topbar-mount"></header>
       <main class="page-content">
-        <div class="card empty-state">
+        <div id="no-dataset-state" class="card empty-state" hidden>
           <h3>No dataset yet</h3>
-          <p>Upload data with date and revenue columns to generate KPI cards, a revenue trend chart, and category mix. This page's analytics ship in Milestone 4.</p>
+          <p>Upload data with date and revenue columns to generate KPI cards, a revenue trend chart, and category mix.</p>
+        </div>
+
+        <div id="unavailable-state" class="card empty-state" hidden>
+          <h3>Missing required columns</h3>
+          <p id="unavailable-message"></p>
+          <p><a href="/upload.html">Review column roles on the Upload &amp; Clean page →</a></p>
+        </div>
+
+        <div id="dashboard-content" hidden>
+          <form id="filter-bar" class="filter-bar card">
+            <div class="field">
+              <label for="filter-start-date">From</label>
+              <input type="date" id="filter-start-date" />
+            </div>
+            <div class="field">
+              <label for="filter-end-date">To</label>
+              <input type="date" id="filter-end-date" />
+            </div>
+            <div class="field">
+              <label for="filter-region">Region</label>
+              <select id="filter-region">
+                <option value="">All regions</option>
+              </select>
+            </div>
+            <button type="button" id="filter-clear" class="btn btn-secondary">Clear filters</button>
+          </form>
+
+          <section class="stat-grid" aria-label="KPIs">
+            <div class="card stat-card">
+              <span class="stat-label">Total Revenue</span>
+              <span class="stat-value" id="kpi-total-revenue">—</span>
+            </div>
+            <div class="card stat-card">
+              <span class="stat-label">Total Orders</span>
+              <span class="stat-value" id="kpi-total-orders">—</span>
+            </div>
+            <div class="card stat-card">
+              <span class="stat-label">Average Order Value</span>
+              <span class="stat-value" id="kpi-aov">—</span>
+            </div>
+            <div class="card stat-card">
+              <span class="stat-label">Active Customers</span>
+              <span class="stat-value" id="kpi-active-customers">—</span>
+            </div>
+          </section>
+
+          <section class="chart-grid">
+            <div class="card chart-card">
+              <h3>Revenue Trend</h3>
+              <div class="chart-wrap"><canvas id="revenue-trend-chart"></canvas></div>
+            </div>
+            <div class="card chart-card">
+              <h3>Category Mix</h3>
+              <div class="chart-wrap" id="category-mix-wrap">
+                <canvas id="category-mix-chart"></canvas>
+              </div>
+              <p class="section-hint" id="category-mix-empty" hidden>No category column detected for this dataset.</p>
+            </div>
+          </section>
         </div>
       </main>
     </div>
   </div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <script type="module" src="/js/sidebar.js"></script>
+  <script type="module" src="/js/pages/dashboard.js"></script>
 </body>
 </html>

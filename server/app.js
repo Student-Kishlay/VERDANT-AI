@@ -11,6 +11,7 @@ import { createStorage } from './storage.js';
 import { cleanDataset, METHODOLOGY_VERSION as CLEAN_METHODOLOGY_VERSION } from './pipeline/clean-dataset.js';
 import { detectColumns } from './pipeline/detect-columns.js';
 import { parseSpreadsheet } from './pipeline/parse-spreadsheet.js';
+import { computeKpis } from './pipeline/compute-kpis.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -319,6 +320,23 @@ export function createApp(db, { jwtSecret, storage, config } = {}) {
     store.deleteUpload(dataset.storage_path);
     db.deleteDataset(dataset.id);
     return ok(res, { deleted: true });
+  });
+
+  // ── KPI Dashboard (Milestone 4) ──────────────────────────────────────────
+
+  app.get('/api/datasets/:id/kpis', requireAuth, (req, res) => {
+    const dataset = getAccessibleDataset(req);
+    if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
+    if (dataset.status !== 'ready') {
+      return fail(res, 409, 'NOT_READY', `Dataset is ${dataset.status}, not ready.`);
+    }
+
+    const columns = db.getColumnMaps(dataset.id).map(withEffectiveRole);
+    const rows = db.getAllDatasetRows(dataset.id);
+    const { start_date, end_date, region } = req.query;
+
+    const kpis = computeKpis(columns, rows, { startDate: start_date, endDate: end_date, region });
+    return ok(res, { kpis });
   });
 
   return app;

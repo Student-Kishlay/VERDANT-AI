@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { parseSpreadsheet } from '../server/pipeline/parse-spreadsheet.js';
 import { cleanDataset } from '../server/pipeline/clean-dataset.js';
 import { detectColumns } from '../server/pipeline/detect-columns.js';
+import { computeKpis } from '../server/pipeline/compute-kpis.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
@@ -92,4 +93,61 @@ test('parseSpreadsheet stores an injected script payload as-is (sanitization is 
   const { rows: cleaned } = cleanDataset(headers, rows);
   const injected = cleaned.find((r) => r.category.includes('img'));
   assert.equal(injected.category, '<img src=x onerror=alert(1)>');
+});
+
+// tests/fixtures/dashboard-sales.csv: 10 already-clean rows, Feb 1-10 2024,
+// one repeat customer (Alice, rows 1 and 5) so distinct-count regressions
+// (the metric the master prompt calls out as broken in the original) show up.
+async function loadDashboardFixture() {
+  const { headers, rows } = await loadFixture('dashboard-sales.csv');
+  const cleaned = cleanDataset(headers, rows);
+  const columns = detectColumns(cleaned.headers, cleaned.rows).map((c) => ({ ...c, effective_role: c.detected_role }));
+  return { columns, rows: cleaned.rows };
+}
+
+test('computeKpis: unfiltered totals match hand computation', async () => {
+  const { columns, rows } = await loadDashboardFixture();
+  const kpis = computeKpis(columns, rows);
+
+  assert.equal(kpis.available, true);
+  assert.equal(kpis.total_revenue, 5500);
+  assert.equal(kpis.total_orders, 10);
+  assert.equal(kpis.avg_order_value, 550);
+  assert.equal(kpis.active_customers, 9); // Alice's 2 rows count once — the regression this guards against
+  assert.deepEqual(kpis.available_regions, ['East', 'North', 'South', 'West']);
+  assert.equal(kpis.revenue_trend.length, 10);
+  assert.deepEqual(
+    kpis.category_mix,
+    [
+      { category: 'Grocery', revenue: 2500 },
+      { category: 'Electronics', revenue: 1700 },
+      { category: 'Apparel', revenue: 1300 },
+    ]
+  );
+});
+
+test('computeKpis: a date-range filter changes the totals (server-side recompute)', async () => {
+  const { columns, rows } = await loadDashboardFixture();
+  const kpis = computeKpis(columns, rows, { startDate: '2024-02-03', endDate: '2024-02-06' });
+
+  assert.equal(kpis.total_revenue, 1800); // rows 3,4,5,6: 300+400+500+600
+  assert.equal(kpis.total_orders, 4);
+  assert.equal(kpis.avg_order_value, 450);
+  assert.equal(kpis.active_customers, 4); // Carol, Dave, Alice, Eve
+});
+
+test('computeKpis: a region filter changes the totals independently of the date filter', async () => {
+  const { columns, rows } = await loadDashboardFixture();
+  const kpis = computeKpis(columns, rows, { region: 'North' });
+
+  assert.equal(kpis.total_revenue, 1900); // rows 1,3,5,10: 100+300+500+1000
+  assert.equal(kpis.total_orders, 4);
+  assert.equal(kpis.active_customers, 3); // Alice (x2), Carol, Ivan -> 3 distinct
+});
+
+test('computeKpis reports which required role is missing instead of silently returning zeros', () => {
+  const columns = [{ column_name: 'notes', detected_role: null, confidence: 0, effective_role: null }];
+  const kpis = computeKpis(columns, [{ notes: 'hi' }]);
+  assert.equal(kpis.available, false);
+  assert.deepEqual(kpis.missing.sort(), ['date', 'revenue']);
 });

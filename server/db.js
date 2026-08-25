@@ -193,5 +193,12 @@ export function createDb(filePath) {
         .slice(0, limit)
         .map((r) => r.data);
     },
+
+    getAllDatasetRows(datasetId) {
+      return data.dataset_rows
+        .filter((r) => r.dataset_id === datasetId)
+        .sort((a, b) => a.row_index - b.row_index)
+        .map((r) => r.data);
+    },
   };
 }

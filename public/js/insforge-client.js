@@ -84,6 +84,15 @@ export const insforge = {
     getActiveId() {
       return localStorage.getItem(ACTIVE_WORKSPACE_KEY);
     },
+    create(name) {
+      return request('/api/workspaces', { method: 'POST', body: { name } });
+    },
+    getMembers(workspaceId) {
+      return request(`/api/workspaces/${workspaceId}/members`);
+    },
+    invite(workspaceId, email) {
+      return request(`/api/workspaces/${workspaceId}/invitations`, { method: 'POST', body: { email } });
+    },
   },
 
   config: {

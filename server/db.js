@@ -20,6 +20,7 @@ const EMPTY_DATA = {
   anomalies: [],
   chat_messages: [],
   report_shares: [],
+  workspace_invitations: [],
 };
 
 export function createDb(filePath) {
@@ -92,6 +93,20 @@ export function createDb(filePath) {
       return data.workspace_members.some(
         (m) => m.workspace_id === workspaceId && m.user_id === userId
       );
+    },
+
+    getMemberRole(workspaceId, userId) {
+      const member = data.workspace_members.find((m) => m.workspace_id === workspaceId && m.user_id === userId);
+      return member ? member.role : null;
+    },
+
+    getMembers(workspaceId) {
+      return data.workspace_members
+        .filter((m) => m.workspace_id === workspaceId)
+        .map((m) => {
+          const user = data.users.find((u) => u.id === m.user_id);
+          return { user_id: m.user_id, display_name: user?.display_name, email: user?.email, role: m.role, joined_at: m.joined_at };
+        });
     },
 
     getWorkspacesForUser(userId) {
@@ -335,6 +350,47 @@ export function createDb(filePath) {
       share.revoked = true;
       persist();
       return share;
+    },
+
+    // ── workspace_invitations ────────────────────────────────────────────
+    createInvitation({ workspaceId, invitedEmail, invitedBy }) {
+      const invitation = {
+        id: randomUUID(),
+        workspace_id: workspaceId,
+        invited_email: invitedEmail,
+        status: 'pending',
+        invited_by: invitedBy,
+        created_at: new Date().toISOString(),
+      };
+      data.workspace_invitations.push(invitation);
+      persist();
+      return invitation;
+    },
+
+    findPendingInvitation(workspaceId, email) {
+      return (
+        data.workspace_invitations.find(
+          (i) => i.workspace_id === workspaceId && i.status === 'pending' && i.invited_email.toLowerCase() === email.toLowerCase()
+        ) || null
+      );
+    },
+
+    findPendingInvitationsForEmail(email) {
+      return data.workspace_invitations.filter(
+        (i) => i.status === 'pending' && i.invited_email.toLowerCase() === email.toLowerCase()
+      );
+    },
+
+    listInvitations(workspaceId) {
+      return data.workspace_invitations.filter((i) => i.workspace_id === workspaceId);
+    },
+
+    acceptInvitation(id) {
+      const invitation = data.workspace_invitations.find((i) => i.id === id);
+      if (!invitation) return null;
+      invitation.status = 'accepted';
+      persist();
+      return invitation;
     },
   };
 }

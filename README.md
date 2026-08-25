@@ -4,7 +4,7 @@ Zero-configuration, self-service BI platform: upload a sales spreadsheet, get
 cleaned data, KPI dashboards, forecasts, RFM segmentation, anomaly detection,
 and a grounded AI chat assistant. Full spec: `Verdant_BI_Master_Prompt_v2.md`.
 
-## Current status: Milestones 1-7 of 10
+## Current status: Milestones 1-8 of 10
 
 This build has no InsForge project/credentials connected yet, so it currently
 runs against a **local mock backend** (`server/`) that implements the same
@@ -71,15 +71,24 @@ Done so far:
   the target schema); revoking or letting a link expire makes the public
   URL 403 on the next request, checked server-side — the raw storage path
   is never exposed to the client.
-- `login.html`, `index.html`, `upload.html`, `dashboard.html`, `insights.html`,
-  `chat.html`, `reports.html`, and `shares.html` are all fully functional
-  now; the remaining 2 pages render the shared shell with an explicit empty
-  state describing which later milestone builds them out.
+- Team / Multi-User Workspaces (`/team.html`, §12): create team
+  workspaces; invite by email (immediate membership for an existing user,
+  a pending invitation that auto-converts to membership the moment that
+  exact email signs up otherwise). Added real **role enforcement** this
+  milestone: deleting a dataset and refreshing/revoking a share link now
+  require the `owner` role, not just membership — retrofitted onto the
+  three existing routes §12 names as owner-only, checked server-side.
+- Every page (`login.html`, `index.html`, `upload.html`, `dashboard.html`,
+  `insights.html`, `chat.html`, `reports.html`, `shares.html`, `team.html`)
+  is now fully functional. `profile.html` remains a stub (account info +
+  upload/chat history — never explicitly scoped to a milestone in the
+  master prompt's numbered list).
 
-Not yet built (Milestones 8-10): team/workspace management, and the
+Not yet built (Milestone 9-10): a dedicated auth/security hardening pass,
+the full §15 test suite as a single reviewed sweep, final docs, and the
 eventual InsForge migration. Each is its own milestone with its own review
 checkpoint, per the master prompt's own working rule (§0.5/§19) —
-don't assume anything past Milestone 7 is implemented.
+don't assume anything past Milestone 8 is implemented.
 
 ## Running it
 

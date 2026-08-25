@@ -107,6 +107,14 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
     });
     db.addMember({ workspaceId: workspace.id, userId: user.id, role: 'owner' });
 
+    // Any pending invitation for this exact email converts to membership on
+    // signup (§12) — the other half of the acceptance criterion alongside
+    // "inviting an existing user grants immediate access."
+    for (const invitation of db.findPendingInvitationsForEmail(email)) {
+      db.addMember({ workspaceId: invitation.workspace_id, userId: user.id, role: 'member' });
+      db.acceptInvitation(invitation.id);
+    }
+
     const token = issueToken(user);
     return ok(res, { token, user: publicUser(user), workspace }, 201);
   });
@@ -144,6 +152,61 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
       return fail(res, 403, 'FORBIDDEN', 'You are not a member of this workspace.');
     }
     return ok(res, { workspace });
+  });
+
+  // ── Team / Multi-User Workspaces (Milestone 8) ──────────────────────────
+
+  // §12: "owners can manage membership, delete datasets, revoke share
+  // links" — the actual authorization boundary, checked server-side, not
+  // just hidden in the UI.
+  function requireOwner(workspaceId, userId) {
+    return db.getMemberRole(workspaceId, userId) === 'owner';
+  }
+
+  app.post('/api/workspaces', requireAuth, (req, res) => {
+    const { name } = req.body || {};
+    if (!name || !name.trim()) return fail(res, 400, 'INVALID_INPUT', 'A workspace name is required.');
+
+    const workspace = db.createWorkspace({ name: name.trim(), type: 'team', ownerId: req.user.id });
+    db.addMember({ workspaceId: workspace.id, userId: req.user.id, role: 'owner' });
+    return ok(res, { workspace: { ...workspace, role: 'owner' } }, 201);
+  });
+
+  app.get('/api/workspaces/:id/members', requireAuth, (req, res) => {
+    if (!db.isMember(req.params.id, req.user.id)) {
+      return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
+    }
+    const members = db.getMembers(req.params.id);
+    const pending = db
+      .listInvitations(req.params.id)
+      .filter((i) => i.status === 'pending')
+      .map((i) => ({ invited_email: i.invited_email, status: 'pending', created_at: i.created_at }));
+    return ok(res, { members, pending_invitations: pending });
+  });
+
+  app.post('/api/workspaces/:id/invitations', requireAuth, (req, res) => {
+    const workspaceId = req.params.id;
+    if (!db.isMember(workspaceId, req.user.id)) {
+      return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
+    }
+    if (!requireOwner(workspaceId, req.user.id)) {
+      return fail(res, 403, 'FORBIDDEN', 'Only the workspace owner can invite members.');
+    }
+
+    const { email } = req.body || {};
+    if (!email || !email.trim()) return fail(res, 400, 'INVALID_INPUT', 'An email address is required.');
+
+    const existingUser = db.findUserByEmail(email);
+    if (existingUser) {
+      if (!db.isMember(workspaceId, existingUser.id)) {
+        db.addMember({ workspaceId, userId: existingUser.id, role: 'member' });
+      }
+      return ok(res, { status: 'joined', member: db.getMembers(workspaceId).find((m) => m.user_id === existingUser.id) }, 201);
+    }
+
+    const existingInvitation = db.findPendingInvitation(workspaceId, email);
+    const invitation = existingInvitation || db.createInvitation({ workspaceId, invitedEmail: email, invitedBy: req.user.id });
+    return ok(res, { status: 'pending', invitation }, 201);
   });
 
   // ── Datasets (Milestone 3: Upload & Clean) ──────────────────────────────
@@ -342,6 +405,9 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
   app.delete('/api/datasets/:id', requireAuth, (req, res) => {
     const dataset = getAccessibleDataset(req);
     if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
+    if (!requireOwner(dataset.workspace_id, req.user.id)) {
+      return fail(res, 403, 'FORBIDDEN', 'Only the workspace owner can delete datasets.');
+    }
     store.deleteUpload(dataset.storage_path);
     db.deleteDataset(dataset.id);
     return ok(res, { deleted: true });
@@ -668,6 +734,9 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
   app.post('/api/shares/:id/refresh', requireAuth, (req, res) => {
     const share = getAccessibleShare(req);
     if (!share) return fail(res, 404, 'NOT_FOUND', 'Share not found.');
+    if (!requireOwner(share.workspace_id, req.user.id)) {
+      return fail(res, 403, 'FORBIDDEN', 'Only the workspace owner can manage share links.');
+    }
     const updated = db.refreshShare(share.id, { token: crypto.randomUUID(), expiresAt: newExpiry() });
     return ok(res, { share: publicShare(updated) });
   });
@@ -675,6 +744,9 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
   app.post('/api/shares/:id/revoke', requireAuth, (req, res) => {
     const share = getAccessibleShare(req);
     if (!share) return fail(res, 404, 'NOT_FOUND', 'Share not found.');
+    if (!requireOwner(share.workspace_id, req.user.id)) {
+      return fail(res, 403, 'FORBIDDEN', 'Only the workspace owner can manage share links.');
+    }
     const updated = db.revokeShare(share.id);
     return ok(res, { share: publicShare(updated) });
   });

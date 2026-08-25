@@ -379,3 +379,31 @@ export of the dataset's cleaned rows.
 **Error codes:** `NOT_FOUND`, `NOT_READY`, `INVALID_INPUT` (bad
 `report_type`), `GENERATE_FAILED`, and on the public route:
 `NOT_FOUND` / `REVOKED` / `EXPIRED`.
+
+## Team / Multi-User Workspaces (§12)
+
+- `POST /api/workspaces` (`{ name }`) — any authenticated user; creates a
+  `type: 'team'` workspace with the caller as `owner`.
+- `GET /api/workspaces/:id/members` — any member; active members
+  (name/email/role) plus pending invitations (email, `status: 'pending'`).
+- `POST /api/workspaces/:id/invitations` (`{ email }`) — **owner-only**. An
+  email matching an existing user grants membership immediately
+  (`{ status: 'joined' }`); otherwise a `workspace_invitations` row is
+  created (`{ status: 'pending' }`) and converts to membership automatically
+  the moment that exact email signs up (handled in `POST /api/auth/signup`).
+  Inviting the same pending email twice reuses the existing invitation
+  rather than duplicating it.
+
+**Role enforcement added this milestone.** §12: *"owners can manage
+membership, delete datasets, revoke share links; members can view data, run
+analytics, and chat."* A `requireOwner(workspaceId, userId)` check
+(`server/app.js`) was retrofitted onto exactly three existing routes:
+`DELETE /api/datasets/:id`, `POST /api/shares/:id/refresh`, and
+`POST /api/shares/:id/revoke` (refresh grouped with revoke — same
+share-lifecycle character, though not separately named in §12). Every
+other route stays open to any member — upload, KPIs, forecasts, segments,
+anomalies, chat, and report *generation* are all "view data, run analytics"
+in spirit, and §12 doesn't ask for them to be owner-restricted.
+
+**Error codes:** `INVALID_INPUT`, `NOT_FOUND`, `FORBIDDEN` (403, non-owner
+attempting an owner-only action).

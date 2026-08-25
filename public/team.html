@@ -6,6 +6,8 @@
   <title>Team — Verdant BI</title>
   <link rel="stylesheet" href="/css/base.css" />
   <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/pages/upload.css" />
+  <link rel="stylesheet" href="/css/pages/team.css" />
 </head>
 <body>
   <div class="app-layout">
@@ -13,13 +15,49 @@
     <div class="app-main">
       <header id="topbar-mount"></header>
       <main class="page-content">
-        <div class="card empty-state">
-          <h3>Team management is coming in Milestone 8</h3>
-          <p>Invite members by email, see role badges, and manage a team workspace here. Your personal workspace and workspace switcher (sidebar) already work today.</p>
-        </div>
+        <section class="card">
+          <h3>Members of this workspace</h3>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                </tr>
+              </thead>
+              <tbody id="members-table-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="invite-section" class="card" hidden>
+          <h3>Invite by email</h3>
+          <p class="section-hint">Only the workspace owner can invite members. If the email already has an account, access is granted immediately — otherwise they'll join automatically the moment they sign up.</p>
+          <form id="invite-form" class="invite-form">
+            <input type="email" id="invite-email" placeholder="teammate@example.com" required />
+            <button type="submit" class="btn">Invite</button>
+          </form>
+          <p class="form-error" id="invite-error" role="alert"></p>
+        </section>
+
+        <section id="member-only-note" class="card empty-state" hidden>
+          <h3>You're a member of this workspace</h3>
+          <p>Only the owner can invite new members or manage this workspace's membership.</p>
+        </section>
+
+        <section class="card">
+          <h3>Create a team workspace</h3>
+          <p class="section-hint">Creating a workspace makes you its owner. Switch to it from the sidebar once created.</p>
+          <form id="create-workspace-form" class="invite-form">
+            <input type="text" id="workspace-name" placeholder="Workspace name" required />
+            <button type="submit" class="btn btn-secondary">Create</button>
+          </form>
+        </section>
       </main>
     </div>
   </div>
   <script type="module" src="/js/sidebar.js"></script>
+  <script type="module" src="/js/pages/team.js"></script>
 </body>
 </html>

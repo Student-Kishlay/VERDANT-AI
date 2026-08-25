@@ -15,6 +15,10 @@ import { computeKpis } from './pipeline/compute-kpis.js';
 import { forecastRevenue } from './pipeline/forecast-revenue.js';
 import { segmentCustomers } from './pipeline/segment-customers.js';
 import { detectAnomalies } from './pipeline/detect-anomalies.js';
+import { buildContextSummary } from './pipeline/build-context-summary.js';
+import { verifyChartGrounding } from './pipeline/verify-chart-grounding.js';
+import { getProvider } from './llm/index.js';
+import { createRateLimiter } from './rate-limiter.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -24,6 +28,12 @@ const DEFAULT_CONFIG = {
   maxUploadRowCount: 200000,
   allowedFileTypes: ['.csv', '.xlsx'],
   anomalyContaminationRate: 0.05,
+  aiProvider: 'mock',
+  groqApiKey: '',
+  groqModel: 'llama-3.3-70b-versatile',
+  chartGroundingThreshold: 0.6,
+  aiChatMaxMessagesPerWorkspacePerHour: 60,
+  aiChatMaxContextTokens: 4000,
 };
 
 // Shared error/success envelope, per Master Prompt §5.5:
@@ -39,6 +49,7 @@ function fail(res, status, code, message) {
 export function createApp(db, { jwtSecret, storage, config } = {}) {
   const cfg = { ...DEFAULT_CONFIG, ...config };
   const store = storage || createStorage(path.join(os.tmpdir(), 'verdant-bi-uploads', crypto.randomUUID()));
+  const chatRateLimiter = createRateLimiter();
 
   const app = express();
   app.use(cors());
@@ -168,10 +179,14 @@ export function createApp(db, { jwtSecret, storage, config } = {}) {
   // A dataset lookup that isn't a member's own workspace responds 404, same
   // as "doesn't exist" — this avoids confirming another workspace's dataset
   // IDs even exist, consistent with the isolation boundary in §12/§14.
-  function getAccessibleDataset(req) {
-    const dataset = db.getDatasetById(req.params.id);
-    if (!dataset || !db.isMember(dataset.workspace_id, req.user.id)) return null;
+  function getAccessibleDatasetById(datasetId, userId) {
+    const dataset = db.getDatasetById(datasetId);
+    if (!dataset || !db.isMember(dataset.workspace_id, userId)) return null;
     return dataset;
+  }
+
+  function getAccessibleDataset(req) {
+    return getAccessibleDatasetById(req.params.id, req.user.id);
   }
 
   const upload = multer({
@@ -192,7 +207,10 @@ export function createApp(db, { jwtSecret, storage, config } = {}) {
   }
 
   app.get('/api/config', (req, res) => {
-    return ok(res, cfg);
+    // Public, unauthenticated route — never include secrets (groqApiKey)
+    // here, only what the browser legitimately needs to know.
+    const { groqApiKey, ...publicConfig } = cfg;
+    return ok(res, publicConfig);
   });
 
   app.post('/api/datasets/upload', requireAuth, uploadMiddleware, async (req, res) => {
@@ -422,6 +440,132 @@ export function createApp(db, { jwtSecret, storage, config } = {}) {
       result.total_rows = rows.length;
     }
     return ok(res, { anomalies: result });
+  });
+
+  // ── AI Chat + Chart Grounding (Milestone 6) ─────────────────────────────
+
+  function publicChatMessage(m) {
+    return {
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      chart_payload: m.chart_payload,
+      grounding_status: m.grounding_status,
+      created_at: m.created_at,
+    };
+  }
+
+  app.get('/api/chat', requireAuth, (req, res) => {
+    const { workspace_id: workspaceId, dataset_id: datasetId } = req.query;
+    if (!workspaceId || !datasetId) {
+      return fail(res, 400, 'INVALID_INPUT', 'workspace_id and dataset_id are required.');
+    }
+    if (!db.isMember(workspaceId, req.user.id)) {
+      return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
+    }
+    const dataset = getAccessibleDatasetById(datasetId, req.user.id);
+    if (!dataset || dataset.workspace_id !== workspaceId) {
+      return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
+    }
+    return ok(res, { messages: db.listChatMessages(workspaceId, datasetId).map(publicChatMessage) });
+  });
+
+  app.post('/api/chat', requireAuth, async (req, res) => {
+    const { workspace_id: workspaceId, dataset_id: datasetId, message } = req.body || {};
+    if (!workspaceId || !datasetId || !message || !message.trim()) {
+      return fail(res, 400, 'INVALID_INPUT', 'workspace_id, dataset_id, and a non-empty message are required.');
+    }
+    if (!db.isMember(workspaceId, req.user.id)) {
+      return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
+    }
+    const dataset = getAccessibleDatasetById(datasetId, req.user.id);
+    if (!dataset || dataset.workspace_id !== workspaceId) {
+      return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
+    }
+    if (dataset.status !== 'ready') {
+      return fail(res, 409, 'NOT_READY', `Dataset is ${dataset.status}, not ready.`);
+    }
+
+    const allowed = chatRateLimiter.checkAndRecord(workspaceId, cfg.aiChatMaxMessagesPerWorkspacePerHour, 60 * 60 * 1000);
+    if (!allowed) {
+      return fail(res, 429, 'RATE_LIMITED', "You've reached the chat limit for this hour — try again shortly.");
+    }
+
+    const columns = db.getColumnMaps(dataset.id).map(withEffectiveRole);
+    const rows = db.getAllDatasetRows(dataset.id);
+    const contextSummary = buildContextSummary(columns, rows, { maxContextTokens: cfg.aiChatMaxContextTokens });
+    const segmentSummary = segmentCustomers(columns, rows).summary_by_label ?? null;
+    const conversationHistory = db.listChatMessages(workspaceId, datasetId, 10).map(publicChatMessage);
+
+    db.addChatMessage({ workspaceId, datasetId, userId: req.user.id, role: 'user', content: message });
+
+    const provider = getProvider(cfg);
+    let providerResult;
+    try {
+      providerResult = await provider.generateReply({
+        question: message,
+        columns,
+        rows,
+        contextSummary,
+        segmentSummary,
+        conversationHistory,
+        apiKey: cfg.groqApiKey,
+        model: cfg.groqModel,
+      });
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          function: 'ai-chat',
+          workspace_id: workspaceId,
+          dataset_id: datasetId,
+          error_message: err.message,
+          timestamp: new Date().toISOString(),
+        })
+      );
+      providerResult = { reply: "I ran into a problem answering that — please try again.", chart_payload: null };
+    }
+
+    let chartPayload = null;
+    let groundingStatus = 'n/a';
+    if (providerResult.chart_payload) {
+      const verification = verifyChartGrounding(providerResult.chart_payload, rows, {
+        threshold: cfg.chartGroundingThreshold,
+      });
+      groundingStatus = verification.grounding_status;
+      if (groundingStatus === 'verified') {
+        chartPayload = providerResult.chart_payload;
+      }
+    }
+
+    const replyText =
+      groundingStatus === 'rejected'
+        ? `${providerResult.reply}\n\nI couldn't confirm this chart against your data, so I'm not showing it.`
+        : providerResult.reply;
+
+    const assistantMessage = db.addChatMessage({
+      workspaceId,
+      datasetId,
+      userId: req.user.id,
+      role: 'assistant',
+      content: replyText,
+      chartPayload,
+      groundingStatus,
+    });
+
+    // §14.1-style structured log; §11.1 approximate token-usage auditing.
+    console.log(
+      JSON.stringify({
+        function: 'ai-chat',
+        workspace_id: workspaceId,
+        dataset_id: datasetId,
+        provider: provider.name,
+        approx_tokens: Math.ceil((message.length + replyText.length) / 4),
+        grounding_status: groundingStatus,
+        timestamp: new Date().toISOString(),
+      })
+    );
+
+    return ok(res, { message: publicChatMessage(assistantMessage) }, 201);
   });
 
   return app;

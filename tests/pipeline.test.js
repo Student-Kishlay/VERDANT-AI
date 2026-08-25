@@ -10,6 +10,8 @@ import { computeKpis } from '../server/pipeline/compute-kpis.js';
 import { forecastRevenue } from '../server/pipeline/forecast-revenue.js';
 import { segmentCustomers } from '../server/pipeline/segment-customers.js';
 import { detectAnomalies } from '../server/pipeline/detect-anomalies.js';
+import { buildContextSummary } from '../server/pipeline/build-context-summary.js';
+import { verifyChartGrounding } from '../server/pipeline/verify-chart-grounding.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
@@ -334,4 +336,70 @@ test('detectAnomalies reports missing columns instead of guessing', () => {
   const result = detectAnomalies([{ column_name: 'notes', effective_role: null }], [{ notes: 'hi' }]);
   assert.equal(result.available, false);
   assert.deepEqual(result.missing, ['revenue']);
+});
+
+async function loadDashboardFixtureWithColumns() {
+  const { headers, rows } = await loadFixture('dashboard-sales.csv');
+  const cleaned = cleanDataset(headers, rows);
+  const columns = detectColumns(cleaned.headers, cleaned.rows).map((c) => ({ ...c, effective_role: c.detected_role }));
+  return { columns, rows: cleaned.rows };
+}
+
+test('buildContextSummary reports correct stats and frames dataset content as data, not instructions', async () => {
+  const { columns, rows } = await loadDashboardFixtureWithColumns();
+  const summary = buildContextSummary(columns, rows, { maxContextTokens: 4000 });
+
+  assert.equal(summary.dataset_overview.row_count, 10);
+  assert.equal(summary.numeric_stats.revenue.sum, 5500); // hand-computed in the Milestone 4 fixture
+  assert.equal(summary.numeric_stats.revenue.min, 100);
+  assert.equal(summary.numeric_stats.revenue.max, 1000);
+  assert.ok(summary.categorical_top_values.category.some((v) => v.value === 'Grocery'));
+  assert.match(summary.system_preamble, /not instructions/);
+  assert.equal(summary.truncated, false);
+});
+
+test('buildContextSummary truncates rather than exceeding a tiny token budget', async () => {
+  const { columns, rows } = await loadDashboardFixtureWithColumns();
+  const summary = buildContextSummary(columns, rows, { maxContextTokens: 15 });
+  assert.equal(summary.truncated, true);
+  assert.ok(summary.sample_rows.length < 5);
+});
+
+test('verifyChartGrounding: a fully grounded spec verifies with ratio 1', async () => {
+  const { rows } = await loadDashboardFixtureWithColumns();
+  const chartPayload = {
+    chart_type: 'bar',
+    label_column: 'category',
+    value_column: 'revenue',
+    labels: ['Electronics', 'Apparel', 'Grocery'],
+    values: [1700, 1300, 2500],
+  };
+  const result = verifyChartGrounding(chartPayload, rows, { threshold: 0.6 });
+  assert.equal(result.grounding_status, 'verified');
+  assert.equal(result.verified_ratio, 1);
+});
+
+test('verifyChartGrounding: a fabricated spec with <60% real labels is rejected', async () => {
+  const { rows } = await loadDashboardFixtureWithColumns();
+  const chartPayload = {
+    chart_type: 'bar',
+    label_column: 'category',
+    labels: ['Electronics', 'MadeUpCategoryA', 'MadeUpCategoryB'], // 1/3 real
+  };
+  const result = verifyChartGrounding(chartPayload, rows, { threshold: 0.6 });
+  assert.equal(result.grounding_status, 'rejected');
+  assert.ok(result.verified_ratio < 0.6);
+});
+
+test('verifyChartGrounding: exactly 60% real labels passes ("fewer than 60%" is what fails)', async () => {
+  const { rows } = await loadDashboardFixtureWithColumns();
+  const chartPayload = {
+    chart_type: 'bar',
+    label_column: 'category',
+    // 3 real (Electronics, Apparel, Grocery) + 2 fake = 60% exactly
+    labels: ['Electronics', 'Apparel', 'Grocery', 'FakeA', 'FakeB'],
+  };
+  const result = verifyChartGrounding(chartPayload, rows, { threshold: 0.6 });
+  assert.equal(result.verified_ratio, 0.6);
+  assert.equal(result.grounding_status, 'verified');
 });

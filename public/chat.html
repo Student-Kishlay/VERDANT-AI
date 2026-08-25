@@ -6,6 +6,7 @@
   <title>AI Chat — Verdant BI</title>
   <link rel="stylesheet" href="/css/base.css" />
   <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/pages/chat.css" />
 </head>
 <body>
   <div class="app-layout">
@@ -13,13 +14,24 @@
     <div class="app-main">
       <header id="topbar-mount"></header>
       <main class="page-content">
-        <div class="card empty-state">
+        <div id="no-dataset-state" class="card empty-state" hidden>
           <h3>Upload a dataset to start chatting</h3>
-          <p>Every answer here will be grounded against your real data — charts are independently verified before they render, and unverified charts are rejected with a visible transparency notice. Ships in Milestone 6.</p>
+          <p>Every answer here is grounded against your real data — charts are independently verified before they
+            render, and unverified charts are rejected with a visible transparency notice.</p>
+        </div>
+
+        <div id="chat-content" class="chat-shell card" hidden>
+          <div id="chat-messages" class="chat-messages"></div>
+          <form id="chat-form" class="chat-input-bar">
+            <input type="text" id="chat-input" placeholder="Ask about revenue, trends, categories, or customers…" autocomplete="off" />
+            <button type="submit" class="btn" id="chat-send-btn">Send</button>
+          </form>
         </div>
       </main>
     </div>
   </div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <script type="module" src="/js/sidebar.js"></script>
+  <script type="module" src="/js/pages/chat.js"></script>
 </body>
 </html>

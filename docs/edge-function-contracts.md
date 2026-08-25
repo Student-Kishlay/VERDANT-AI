@@ -279,3 +279,64 @@ rationale as `segment-customers` — a current classification, not a
 historical log.
 
 **Error codes:** `NOT_FOUND`, `NOT_READY`.
+
+## `ai-chat`
+
+Implemented as `GET /api/chat?workspace_id=&dataset_id=` (history) and
+`POST /api/chat` (`{ workspace_id, dataset_id, message }`). No separate
+`conversation_id` — the target schema's `chat_messages` table (§2) has none
+either; `workspace_id` + `dataset_id` + `created_at` order **is** the
+conversation.
+
+**`POST` response:**
+
+```json
+{ "ok": true, "data": { "message": {
+  "id": "uuid", "role": "assistant",
+  "content": "\"Grocery\" is the top category by revenue ($2,500.00), out of 3 categories.",
+  "chart_payload": { "chart_type": "bar", "label_column": "category", "value_column": "revenue",
+                      "labels": ["Grocery", "Electronics", "Apparel"], "values": [2500, 1700, 1300] },
+  "grounding_status": "verified",
+  "created_at": "2026-01-01T00:00:00.000Z"
+} } }
+```
+
+A rejected chart still returns `ok: true` with `chart_payload: null` and
+`grounding_status: "rejected"` — the reply text itself carries the doc's
+exact transparency notice appended: *"I couldn't confirm this chart against
+your data, so I'm not showing it."*
+
+**Provider (§0/§2.5 — "keep it swappable via `.env`"):** `AI_PROVIDER` +
+`GROQ_API_KEY` select between `server/llm/mock-provider.js` (default — a
+deterministic, keyword-matched responder that only ever reads real
+aggregates, needing no credentials) and `server/llm/groq-provider.js` (a
+real call to Groq's OpenAI-compatible chat-completions endpoint). **The Groq
+path is implemented but has never been exercised against a live API key in
+this build** — there is no InsForge project or Groq key available in this
+environment. Confirm it actually works before relying on it.
+
+**Chart grounding (§11, points 3-4) — the actual trust mechanism, and it
+does not care which provider proposed the chart:**
+`server/pipeline/verify-chart-grounding.js` re-checks every proposed
+`labels` entry against the real values in `rows[chartPayload.label_column]`
+— purely in code, never by asking the model to self-report. Below
+`CHART_GROUNDING_THRESHOLD` (fraction of labels that verify), the chart is
+dropped; the boundary itself (`verified_ratio === threshold`) still counts
+as verified, matching the doc's literal "**fewer than** 60%" wording.
+
+**Context summary (§11, point 1):** `server/pipeline/build-context-summary.js`
+builds column stats/top-values/date-range/a 5-row sample, framed by a
+`system_preamble` that tells whatever model reads it that dataset content is
+DATA, not instructions (§11.1's prompt-injection concern) — sent as-is by
+the Groq provider's system message; inert but present for the mock. Token
+size is approximated as `chars/4` (no real tokenizer) and capped at
+`AI_CHAT_MAX_CONTEXT_TOKENS` by trimming the sample rows, then the
+categorical top-values, until it fits.
+
+**Rate limiting (§11.1):** `server/rate-limiter.js`, an in-memory sliding
+window keyed by `workspace_id`, checked before any work happens per request.
+Deliberately ephemeral state (resets on restart) — acceptable for a mock
+backend's abuse controls.
+
+**Error codes:** `INVALID_INPUT`, `NOT_FOUND`, `NOT_READY`, `RATE_LIMITED`
+(429, with the doc's exact user-facing message).

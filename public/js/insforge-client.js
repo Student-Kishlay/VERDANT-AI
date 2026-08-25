@@ -144,4 +144,13 @@ export const insforge = {
       localStorage.removeItem(`verdant_active_dataset_${workspaceId}`);
     },
   },
+
+  chat: {
+    history(workspaceId, datasetId) {
+      return request(`/api/chat?workspace_id=${workspaceId}&dataset_id=${datasetId}`);
+    },
+    send(workspaceId, datasetId, message) {
+      return request('/api/chat', { method: 'POST', body: { workspace_id: workspaceId, dataset_id: datasetId, message } });
+    },
+  },
 };

@@ -4,7 +4,7 @@ Zero-configuration, self-service BI platform: upload a sales spreadsheet, get
 cleaned data, KPI dashboards, forecasts, RFM segmentation, anomaly detection,
 and a grounded AI chat assistant. Full spec: `Verdant_BI_Master_Prompt_v2.md`.
 
-## Current status: Milestones 1-5c of 10
+## Current status: Milestones 1-6 of 10
 
 This build has no InsForge project/credentials connected yet, so it currently
 runs against a **local mock backend** (`server/`) that implements the same
@@ -48,16 +48,29 @@ Done so far:
   flagged-rows table.
 - Insights (all three tabs — Forecasting, Segmentation, Anomaly Detection)
   load once per dataset and don't re-fetch on tab switches.
-- `login.html`, `index.html`, `upload.html`, `dashboard.html`, and
-  `insights.html` are all fully functional now; the remaining 5 pages render
+- AI Chat + Chart Grounding (`/chat.html`, §11): a conversation over the
+  active dataset, answered by a deterministic, data-grounded **mock LLM
+  provider** by default (`server/llm/mock-provider.js` — needs no
+  credentials, never fabricates since it only reads real aggregates). Every
+  chart either provider proposes is independently re-verified in code
+  against real dataset rows (`server/pipeline/verify-chart-grounding.js`)
+  before it's ever shown; a chart that fails verification is dropped and the
+  reply carries the doc's exact transparency notice instead. Per-workspace
+  rate limiting and an approximate context-token cap are both wired up
+  (§11.1). **A real Groq provider is also implemented** (`server/llm/groq-provider.js`,
+  selected via `AI_PROVIDER=groq` + `GROQ_API_KEY`) but has **not been
+  tested against a live key** — there's no Groq or InsForge credential
+  available in this environment. Verify it actually works before relying on
+  it in production.
+- `login.html`, `index.html`, `upload.html`, `dashboard.html`, `insights.html`,
+  and `chat.html` are all fully functional now; the remaining 4 pages render
   the shared shell with an explicit empty state describing which later
   milestone builds them out.
 
-Not yet built (Milestones 6-10): AI chat + chart grounding, reports &
-sharing, team invitations, and the eventual InsForge migration. Each is its
-own milestone with its own review checkpoint, per the master prompt's own
-working rule (§0.5/§19) — don't assume anything past Milestone 5c is
-implemented.
+Not yet built (Milestones 7-10): reports & sharing, team invitations, and
+the eventual InsForge migration. Each is its own milestone with its own
+review checkpoint, per the master prompt's own working rule (§0.5/§19) —
+don't assume anything past Milestone 6 is implemented.
 
 ## Running it
 

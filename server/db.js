@@ -18,6 +18,7 @@ const EMPTY_DATA = {
   forecasts: [],
   segments: [],
   anomalies: [],
+  chat_messages: [],
 };
 
 export function createDb(filePath) {
@@ -254,6 +255,33 @@ export function createDb(filePath) {
 
     getAnomalies(datasetId) {
       return data.anomalies.filter((a) => a.dataset_id === datasetId);
+    },
+
+    // ── chat_messages ─────────────────────────────────────────────────────
+    // No separate conversation_id — workspace + dataset + created_at order
+    // is the conversation, matching the target schema (§2) exactly.
+    addChatMessage({ workspaceId, datasetId, userId, role, content, chartPayload, groundingStatus }) {
+      const message = {
+        id: randomUUID(),
+        workspace_id: workspaceId,
+        dataset_id: datasetId,
+        user_id: userId,
+        role,
+        content,
+        chart_payload: chartPayload ?? null,
+        grounding_status: groundingStatus ?? 'n/a',
+        created_at: new Date().toISOString(),
+      };
+      data.chat_messages.push(message);
+      persist();
+      return message;
+    },
+
+    listChatMessages(workspaceId, datasetId, limit = 50) {
+      return data.chat_messages
+        .filter((m) => m.workspace_id === workspaceId && m.dataset_id === datasetId)
+        .sort((a, b) => (a.created_at < b.created_at ? -1 : 1))
+        .slice(-limit);
     },
   };
 }

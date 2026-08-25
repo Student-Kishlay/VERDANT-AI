@@ -29,6 +29,12 @@ const app = createApp(db, {
     maxUploadRowCount: Number(process.env.MAX_UPLOAD_ROW_COUNT) || 200000,
     allowedFileTypes: ['.csv', '.xlsx'],
     anomalyContaminationRate: Number(process.env.ANOMALY_CONTAMINATION_RATE) || 0.05,
+    aiProvider: process.env.AI_PROVIDER || 'mock',
+    groqApiKey: process.env.GROQ_API_KEY || '',
+    groqModel: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+    chartGroundingThreshold: Number(process.env.CHART_GROUNDING_THRESHOLD) || 0.6,
+    aiChatMaxMessagesPerWorkspacePerHour: Number(process.env.AI_CHAT_MAX_MESSAGES_PER_WORKSPACE_PER_HOUR) || 60,
+    aiChatMaxContextTokens: Number(process.env.AI_CHAT_MAX_CONTEXT_TOKENS) || 4000,
   },
 });
 

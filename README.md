@@ -4,7 +4,7 @@ Zero-configuration, self-service BI platform: upload a sales spreadsheet, get
 cleaned data, KPI dashboards, forecasts, RFM segmentation, anomaly detection,
 and a grounded AI chat assistant. Full spec: `Verdant_BI_Master_Prompt_v2.md`.
 
-## Current status: Milestones 1-4 of 10
+## Current status: Milestones 1-5a of 10
 
 This build has no InsForge project/credentials connected yet, so it currently
 runs against a **local mock backend** (`server/`) that implements the same
@@ -30,15 +30,21 @@ Done so far:
   chart and Category Mix bar chart (Chart.js via CDN), and a date-range +
   region filter bar that re-fetches from the server on every change rather
   than filtering a cached row set in the browser (§7).
-- `login.html`, `index.html`, `upload.html`, and `dashboard.html` are fully
-  functional; the remaining 6 pages render the shared shell with an explicit
-  empty state describing which later milestone builds them out.
+- Insights → Sales Forecasting (`/insights.html`): a blended linear-trend +
+  moving-average revenue forecast (§8), horizon-selectable (7/30/90 days),
+  floored at zero, stored as an append-only log per dataset. The
+  Segmentation and Anomaly Detection tabs on the same page are stubs — those
+  are Milestones 5b/5c.
+- `login.html`, `index.html`, `upload.html`, `dashboard.html`, and
+  `insights.html` (Forecasting tab only) are fully functional; the remaining
+  5 pages render the shared shell with an explicit empty state describing
+  which later milestone builds them out.
 
-Not yet built (Milestones 5-10): forecasting/segmentation/anomaly detection,
+Not yet built (Milestones 5b-10): customer segmentation, anomaly detection,
 AI chat + chart grounding, reports & sharing, team invitations, and the
 eventual InsForge migration. Each is its own milestone with its own review
 checkpoint, per the master prompt's own working rule (§0.5/§19) — don't
-assume anything past Milestone 4 is implemented.
+assume anything past Milestone 5a is implemented.
 
 ## Running it
 

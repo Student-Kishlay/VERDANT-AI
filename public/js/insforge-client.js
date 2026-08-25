@@ -122,6 +122,9 @@ export const insforge = {
       const qs = params.toString();
       return request(`/api/datasets/${id}/kpis${qs ? `?${qs}` : ''}`);
     },
+    getForecast(id, horizonDays) {
+      return request(`/api/datasets/${id}/forecast?horizon_days=${horizonDays}`);
+    },
     // "Active dataset" has no server-side concept (mirrors the target
     // schema, which has no such column either) — it's just "the last
     // dataset this browser uploaded/viewed for this workspace."

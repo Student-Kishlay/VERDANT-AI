@@ -147,3 +147,40 @@ value regardless of repeat customers).
 
 **Error codes:** `NOT_FOUND` (not a member / doesn't exist), `NOT_READY`
 (dataset status isn't `'ready'` yet).
+
+## `forecast-revenue`
+
+Implemented as `GET /api/datasets/:id/forecast?horizon_days=7|30|90` — same
+GET-query-param adaptation as `compute-kpis`; `horizon_days` is validated
+server-side against exactly `[7, 30, 90]`.
+
+**Response (available):**
+
+```json
+{ "ok": true, "data": { "forecast": {
+  "available": true,
+  "historical": [{ "date": "2024-02-01", "revenue": 100 }],
+  "series": [{ "date": "2024-02-11", "predicted_revenue": 640 }],
+  "horizon_days": 7,
+  "methodology_version": 1
+} } }
+```
+
+**Response (missing required columns)** — same shape as `compute-kpis`'s
+unavailable case: `{ "available": false, "missing": ["revenue"] }`.
+
+**Methodology (§8), one concrete choice where the spec underspecifies the
+recursive part:** daily revenue is aggregated into a *dense* series — every
+calendar day from first to last sale, zero-filled for gap days, not just the
+days that had sales — then a degree-1 least-squares line is fit over that
+series. The moving-average term is the average of the last `min(7, H)`
+historical days, held **constant** across the whole forecast horizon (a flat
+anchor); the linear term is what actually extrapolates forward.
+`predicted_revenue = max(0, 0.6 × linear_trend + 0.4 × moving_average)` per
+future day. Every call to this endpoint **appends** a new row to the
+`forecasts` table (`server/db.js#createForecast`) rather than overwriting the
+previous one — per §9/§10's methodology-versioning intent, this table is an
+append-only log.
+
+**Error codes:** `NOT_FOUND`, `NOT_READY`, `INVALID_INPUT` (unsupported
+`horizon_days`).

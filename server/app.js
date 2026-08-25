@@ -12,6 +12,7 @@ import { cleanDataset, METHODOLOGY_VERSION as CLEAN_METHODOLOGY_VERSION } from '
 import { detectColumns } from './pipeline/detect-columns.js';
 import { parseSpreadsheet } from './pipeline/parse-spreadsheet.js';
 import { computeKpis } from './pipeline/compute-kpis.js';
+import { forecastRevenue } from './pipeline/forecast-revenue.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -337,6 +338,37 @@ export function createApp(db, { jwtSecret, storage, config } = {}) {
 
     const kpis = computeKpis(columns, rows, { startDate: start_date, endDate: end_date, region });
     return ok(res, { kpis });
+  });
+
+  // ── Insights: Sales Forecasting (Milestone 5a) ──────────────────────────
+
+  const ALLOWED_HORIZONS = [7, 30, 90];
+
+  app.get('/api/datasets/:id/forecast', requireAuth, (req, res) => {
+    const dataset = getAccessibleDataset(req);
+    if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
+    if (dataset.status !== 'ready') {
+      return fail(res, 409, 'NOT_READY', `Dataset is ${dataset.status}, not ready.`);
+    }
+
+    const horizonDays = Number(req.query.horizon_days);
+    if (!ALLOWED_HORIZONS.includes(horizonDays)) {
+      return fail(res, 400, 'INVALID_INPUT', `horizon_days must be one of: ${ALLOWED_HORIZONS.join(', ')}.`);
+    }
+
+    const columns = db.getColumnMaps(dataset.id).map(withEffectiveRole);
+    const rows = db.getAllDatasetRows(dataset.id);
+
+    const result = forecastRevenue(columns, rows, { horizonDays });
+    if (result.available) {
+      db.createForecast({
+        datasetId: dataset.id,
+        horizonDays,
+        series: result.series,
+        methodologyVersion: result.methodology_version,
+      });
+    }
+    return ok(res, { forecast: result });
   });
 
   return app;

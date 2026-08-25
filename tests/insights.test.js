@@ -1,0 +1,102 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { startServer, signupAndGetSession } from './helpers.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const FIXTURES_DIR = path.join(__dirname, 'fixtures');
+
+async function uploadFixture(base, token, workspaceId, fileName) {
+  const buffer = fs.readFileSync(path.join(FIXTURES_DIR, fileName));
+  const form = new FormData();
+  form.append('workspace_id', workspaceId);
+  form.append('file', new Blob([buffer], { type: 'text/csv' }), fileName);
+  const res = await fetch(`${base}/api/datasets/upload`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  return (await res.json()).data.dataset;
+}
+
+async function getForecast(base, token, datasetId, horizonDays) {
+  const res = await fetch(`${base}/api/datasets/${datasetId}/forecast?horizon_days=${horizonDays}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return { status: res.status, body: await res.json() };
+}
+
+test('GET .../forecast returns a non-negative series of the requested length', async () => {
+  const { server, base } = await startServer();
+  try {
+    const { token, workspace } = await signupAndGetSession(base, 'forecast-owner@example.com');
+    const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
+
+    const { status, body } = await getForecast(base, token, dataset.id, 7);
+    assert.equal(status, 200);
+    assert.equal(body.data.forecast.available, true);
+    assert.equal(body.data.forecast.series.length, 7);
+    assert.ok(body.data.forecast.series.every((p) => p.predicted_revenue >= 0));
+  } finally {
+    server.close();
+  }
+});
+
+test('each horizon option returns a series of matching length', async () => {
+  const { server, base } = await startServer();
+  try {
+    const { token, workspace } = await signupAndGetSession(base, 'forecast-horizons@example.com');
+    const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
+
+    for (const horizon of [7, 30, 90]) {
+      const { body } = await getForecast(base, token, dataset.id, horizon);
+      assert.equal(body.data.forecast.series.length, horizon);
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test('an unsupported horizon is rejected', async () => {
+  const { server, base } = await startServer();
+  try {
+    const { token, workspace } = await signupAndGetSession(base, 'forecast-badhorizon@example.com');
+    const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
+
+    const { status, body } = await getForecast(base, token, dataset.id, 14);
+    assert.equal(status, 400);
+    assert.equal(body.error.code, 'INVALID_INPUT');
+  } finally {
+    server.close();
+  }
+});
+
+test('each forecast request appends to the forecasts log rather than overwriting', async () => {
+  const { server, base, db } = await startServer();
+  try {
+    const { token, workspace } = await signupAndGetSession(base, 'forecast-log@example.com');
+    const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
+
+    await getForecast(base, token, dataset.id, 7);
+    await getForecast(base, token, dataset.id, 30);
+    assert.equal(db.listForecasts(dataset.id).length, 2);
+  } finally {
+    server.close();
+  }
+});
+
+test('a user outside the workspace cannot read its forecast', async () => {
+  const { server, base } = await startServer();
+  try {
+    const owner = await signupAndGetSession(base, 'forecast-owner2@example.com');
+    const outsider = await signupAndGetSession(base, 'forecast-outsider@example.com');
+    const dataset = await uploadFixture(base, owner.token, owner.workspace.id, 'dashboard-sales.csv');
+
+    const { status } = await getForecast(base, outsider.token, dataset.id, 7);
+    assert.equal(status, 404);
+  } finally {
+    server.close();
+  }
+});

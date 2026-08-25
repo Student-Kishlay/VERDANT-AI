@@ -7,6 +7,7 @@ import { parseSpreadsheet } from '../server/pipeline/parse-spreadsheet.js';
 import { cleanDataset } from '../server/pipeline/clean-dataset.js';
 import { detectColumns } from '../server/pipeline/detect-columns.js';
 import { computeKpis } from '../server/pipeline/compute-kpis.js';
+import { forecastRevenue } from '../server/pipeline/forecast-revenue.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
@@ -150,4 +151,73 @@ test('computeKpis reports which required role is missing instead of silently ret
   const kpis = computeKpis(columns, [{ notes: 'hi' }]);
   assert.equal(kpis.available, false);
   assert.deepEqual(kpis.missing.sort(), ['date', 'revenue']);
+});
+
+const FORECAST_COLUMNS = [
+  { column_name: 'order_date', effective_role: 'date' },
+  { column_name: 'revenue', effective_role: 'revenue' },
+];
+
+// A perfectly linear 7-day series (100, 200, ..., 700) has a least-squares
+// fit with zero residual: slope=100, intercept=100 (hand-verified). The
+// moving average over all 7 days (window = min(7,7)) is the mean, 400.
+// Forecast(x) = 0.6*(100+100x) + 0.4*400 for x=7,8,9 -> 640, 700, 760.
+test('forecastRevenue matches a hand-computed linear-trend fit exactly', () => {
+  const rows = [100, 200, 300, 400, 500, 600, 700].map((revenue, i) => ({
+    order_date: `2024-03-0${i + 1}`,
+    revenue,
+  }));
+  const result = forecastRevenue(FORECAST_COLUMNS, rows, { horizonDays: 3 });
+
+  assert.equal(result.available, true);
+  assert.equal(result.historical.length, 7);
+  assert.deepEqual(
+    result.series.map((p) => p.predicted_revenue),
+    [640, 700, 760]
+  );
+  assert.deepEqual(
+    result.series.map((p) => p.date),
+    ['2024-03-08', '2024-03-09', '2024-03-10']
+  );
+});
+
+// A declining 5-day series (500,400,300,200,100): slope=-100, intercept=500,
+// moving average (window=5) = 300. Forecast(x)=0.6*(500-100x)+0.4*300 for
+// x=5..9 -> 120, 60, 0, -60->0, -120->0. This is what actually exercises the
+// "non-negative at every point" acceptance criterion.
+test('forecastRevenue floors negative projections at zero', () => {
+  const rows = [500, 400, 300, 200, 100].map((revenue, i) => ({
+    order_date: `2024-04-0${i + 1}`,
+    revenue,
+  }));
+  const result = forecastRevenue(FORECAST_COLUMNS, rows, { horizonDays: 5 });
+
+  assert.deepEqual(
+    result.series.map((p) => p.predicted_revenue),
+    [120, 60, 0, 0, 0]
+  );
+  assert.ok(result.series.every((p) => p.predicted_revenue >= 0));
+});
+
+test('forecastRevenue zero-fills gap days rather than skipping them', () => {
+  // Only day 1 and day 4 have sales; days 2-3 must appear as zero revenue,
+  // making the historical series length 4, not 2.
+  const rows = [
+    { order_date: '2024-05-01', revenue: 100 },
+    { order_date: '2024-05-04', revenue: 100 },
+  ];
+  const result = forecastRevenue(FORECAST_COLUMNS, rows, { horizonDays: 1 });
+  assert.equal(result.historical.length, 4);
+  assert.deepEqual(
+    result.historical.map((p) => p.revenue),
+    [100, 0, 0, 100]
+  );
+});
+
+test('forecastRevenue reports missing columns instead of guessing', () => {
+  const result = forecastRevenue([{ column_name: 'notes', effective_role: null }], [{ notes: 'hi' }], {
+    horizonDays: 7,
+  });
+  assert.equal(result.available, false);
+  assert.deepEqual(result.missing.sort(), ['date', 'revenue']);
 });

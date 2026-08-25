@@ -15,6 +15,7 @@ const EMPTY_DATA = {
   datasets: [],
   column_maps: [],
   dataset_rows: [],
+  forecasts: [],
 };
 
 export function createDb(filePath) {
@@ -199,6 +200,27 @@ export function createDb(filePath) {
         .filter((r) => r.dataset_id === datasetId)
         .sort((a, b) => a.row_index - b.row_index)
         .map((r) => r.data);
+    },
+
+    // ── forecasts ─────────────────────────────────────────────────────────
+    // Append-only log — a new forecast run never overwrites a prior one, per
+    // §9/§10's methodology-versioning intent.
+    createForecast({ datasetId, horizonDays, series, methodologyVersion }) {
+      const forecast = {
+        id: randomUUID(),
+        dataset_id: datasetId,
+        horizon_days: horizonDays,
+        generated_at: new Date().toISOString(),
+        series,
+        methodology_version: methodologyVersion,
+      };
+      data.forecasts.push(forecast);
+      persist();
+      return forecast;
+    },
+
+    listForecasts(datasetId) {
+      return data.forecasts.filter((f) => f.dataset_id === datasetId);
     },
   };
 }

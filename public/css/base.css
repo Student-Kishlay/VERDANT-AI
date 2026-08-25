@@ -1,16 +1,16 @@
 :root {
-  --color-sidebar: #0b2e24;
-  --color-sidebar-active: #143d30;
-  --color-sidebar-text: #eaf3ef;
-  --color-sidebar-text-dim: #9db8ae;
+  --color-sidebar: #2f4a6d;
+  --color-sidebar-active: #3d5f89;
+  --color-sidebar-text: #f0f4fa;
+  --color-sidebar-text-dim: #b3c3da;
 
   --color-accent: #16a673;
   --color-accent-hover: #128a60;
   --color-accent-contrast: #ffffff;
 
-  --color-bg: #eef2fa;
+  --color-bg: #f4f6f5;
   --color-card: #ffffff;
-  --color-border: #dde3f0;
+  --color-border: #e2e8e5;
 
   --color-text: #101915;
   --color-text-muted: #5b6b64;

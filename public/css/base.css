@@ -1,0 +1,180 @@
+:root {
+  --color-sidebar: #0b2e24;
+  --color-sidebar-active: #143d30;
+  --color-sidebar-text: #eaf3ef;
+  --color-sidebar-text-dim: #9db8ae;
+
+  --color-accent: #16a673;
+  --color-accent-hover: #128a60;
+  --color-accent-contrast: #ffffff;
+
+  --color-bg: #f4f6f5;
+  --color-card: #ffffff;
+  --color-border: #e2e8e5;
+
+  --color-text: #101915;
+  --color-text-muted: #5b6b64;
+
+  --color-danger: #d92d20;
+  --color-warning: #b45309;
+  --color-warning-bg: #fef3e2;
+  --color-success-bg: #e6f6ef;
+
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-card: 0 1px 2px rgba(16, 25, 21, 0.06), 0 1px 8px rgba(16, 25, 21, 0.04);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* Visible keyboard focus everywhere (§4 accessibility baseline) */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.eyebrow {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.page-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.card {
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-border);
+  padding: 1.25rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 0.65rem 1.1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+.btn:hover {
+  background: var(--color-accent-hover);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.btn-danger {
+  background: var(--color-danger);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.field label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.field input {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.pill-success {
+  background: var(--color-success-bg);
+  color: var(--color-accent-hover);
+}
+
+.pill-warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.form-error {
+  color: var(--color-danger);
+  font-size: 0.85rem;
+  min-height: 1.2em;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem 1.5rem;
+  color: var(--color-text-muted);
+}
+
+.empty-state h3 {
+  color: var(--color-text);
+  margin-bottom: 0.5rem;
+}

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in — Verdant BI</title>
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/pages/login.css" />
+</head>
+<body>
+  <div class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <span class="auth-brand-mark">V</span>
+        <span>Verdant BI</span>
+      </div>
+      <h2 id="form-title">Sign in</h2>
+      <form id="auth-form" novalidate>
+        <div class="field" id="display-name-field" hidden>
+          <label for="display-name">Full name</label>
+          <input id="display-name" name="display-name" type="text" autocomplete="name" />
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" autocomplete="email" required />
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required minlength="8" />
+        </div>
+        <p class="form-error" id="form-error" role="alert"></p>
+        <button class="btn" type="submit" id="submit-btn">Sign in</button>
+      </form>
+      <button class="mode-toggle" id="mode-toggle" type="button">Don't have an account? Sign up</button>
+    </div>
+  </div>
+  <script type="module" src="/js/pages/login.js"></script>
+</body>
+</html>

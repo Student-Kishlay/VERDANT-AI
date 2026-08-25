@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Profile — Verdant BI</title>
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/pages/profile.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <aside id="sidebar-mount"></aside>
+    <div class="app-main">
+      <header id="topbar-mount"></header>
+      <main class="page-content">
+        <div class="card profile-card">
+          <h3>Account</h3>
+          <dl class="profile-details">
+            <dt>Name</dt>
+            <dd id="profile-name">—</dd>
+            <dt>Email</dt>
+            <dd id="profile-email">—</dd>
+          </dl>
+        </div>
+        <div class="card empty-state">
+          <h3>Upload &amp; chat history coming soon</h3>
+          <p>Your dataset upload history, chat history, and a "delete active dataset" action will appear here starting in Milestone 3.</p>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script type="module" src="/js/sidebar.js"></script>
+  <script type="module" src="/js/pages/profile.js"></script>
+</body>
+</html>

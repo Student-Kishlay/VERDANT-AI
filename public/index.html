@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Home — Verdant BI</title>
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/pages/home.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <aside id="sidebar-mount"></aside>
+    <div class="app-main">
+      <header id="topbar-mount"></header>
+      <main class="page-content">
+        <p id="welcome-message" class="welcome-message">Welcome back.</p>
+
+        <section class="stat-grid" aria-label="Quick stats">
+          <div class="card stat-card">
+            <span class="stat-label">Last dataset</span>
+            <span class="stat-value stat-value-muted">None yet</span>
+          </div>
+          <div class="card stat-card">
+            <span class="stat-label">Total records</span>
+            <span class="stat-value">0</span>
+          </div>
+          <div class="card stat-card">
+            <span class="stat-label">Forecasts generated</span>
+            <span class="stat-value">0</span>
+          </div>
+          <div class="card stat-card">
+            <span class="stat-label">Chat questions asked</span>
+            <span class="stat-value">0</span>
+          </div>
+        </section>
+
+        <section aria-label="Quick actions">
+          <h2 class="section-heading">Quick actions</h2>
+          <div class="tile-grid">
+            <a class="card tile" href="/upload.html">
+              <span class="tile-title">Upload a dataset</span>
+              <span class="tile-desc">Clean and prepare a sales spreadsheet</span>
+            </a>
+            <a class="card tile" href="/dashboard.html">
+              <span class="tile-title">View dashboard</span>
+              <span class="tile-desc">KPIs, revenue trend, category mix</span>
+            </a>
+            <a class="card tile" href="/insights.html">
+              <span class="tile-title">Explore insights</span>
+              <span class="tile-desc">Forecasts, segments, anomalies</span>
+            </a>
+            <a class="card tile" href="/chat.html">
+              <span class="tile-title">Ask the AI assistant</span>
+              <span class="tile-desc">Grounded answers about your data</span>
+            </a>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script type="module" src="/js/sidebar.js"></script>
+  <script type="module" src="/js/pages/index.js"></script>
+</body>
+</html>

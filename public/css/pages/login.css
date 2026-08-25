@@ -35,7 +35,7 @@
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: var(--color-accent);
+  background: var(--color-brand-blue);
   color: #fff;
   font-weight: 800;
 }
@@ -48,6 +48,11 @@
 .auth-card .btn {
   width: 100%;
   margin-top: 0.25rem;
+  background: var(--color-brand-blue);
+}
+
+.auth-card .btn:hover {
+  background: var(--color-brand-blue-hover);
 }
 
 .mode-toggle {

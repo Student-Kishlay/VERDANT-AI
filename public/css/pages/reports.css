@@ -1,0 +1,44 @@
+.report-type-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.report-type-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.report-type-card .btn {
+  margin-top: 0.25rem;
+  align-self: flex-start;
+}
+
+.pill-action {
+  background: none;
+  border: none;
+  color: var(--color-accent-hover);
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 0;
+  margin-right: 0.75rem;
+  text-decoration: underline;
+}
+
+.pill-action-danger {
+  color: var(--color-danger);
+}
+
+@media (max-width: 1024px) {
+  .report-type-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .report-type-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -22,5 +22,17 @@ export function createStorage(rootDir) {
       const full = path.join(rootDir, relativePath);
       if (fs.existsSync(full)) fs.unlinkSync(full);
     },
+
+    saveReport(buffer, { workspaceId, reportId, extension }) {
+      const dir = path.join(rootDir, workspaceId);
+      fs.mkdirSync(dir, { recursive: true });
+      const relativePath = path.join(workspaceId, `${reportId}${extension}`);
+      fs.writeFileSync(path.join(rootDir, relativePath), buffer);
+      return relativePath;
+    },
+
+    readReport(relativePath) {
+      return fs.readFileSync(path.join(rootDir, relativePath));
+    },
   };
 }

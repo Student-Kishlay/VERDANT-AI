@@ -153,4 +153,25 @@ export const insforge = {
       return request('/api/chat', { method: 'POST', body: { workspace_id: workspaceId, dataset_id: datasetId, message } });
     },
   },
+
+  reports: {
+    generate(datasetId, reportType) {
+      return request(`/api/datasets/${datasetId}/reports`, { method: 'POST', body: { report_type: reportType } });
+    },
+    list(datasetId) {
+      return request(`/api/datasets/${datasetId}/reports`);
+    },
+  },
+
+  shares: {
+    list(workspaceId) {
+      return request(`/api/workspaces/${workspaceId}/shares`);
+    },
+    refresh(shareId) {
+      return request(`/api/shares/${shareId}/refresh`, { method: 'POST' });
+    },
+    revoke(shareId) {
+      return request(`/api/shares/${shareId}/revoke`, { method: 'POST' });
+    },
+  },
 };

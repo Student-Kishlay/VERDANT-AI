@@ -6,6 +6,8 @@
   <title>Reports — Verdant BI</title>
   <link rel="stylesheet" href="/css/base.css" />
   <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/pages/upload.css" />
+  <link rel="stylesheet" href="/css/pages/reports.css" />
 </head>
 <body>
   <div class="app-layout">
@@ -13,13 +15,57 @@
     <div class="app-main">
       <header id="topbar-mount"></header>
       <main class="page-content">
-        <div class="card empty-state">
-          <h3>No reports yet</h3>
-          <p>Once a dataset is uploaded, generate PDF and Excel exports here, with a "Share link" action per report. Ships in Milestone 7.</p>
+        <div id="no-dataset-state" class="card empty-state" hidden>
+          <h3>No dataset yet</h3>
+          <p>Upload a dataset to generate PDF and Excel reports.</p>
+        </div>
+
+        <div id="reports-content" hidden>
+          <section class="report-type-grid" aria-label="Generate a report">
+            <div class="card report-type-card">
+              <h3>Analytics Summary</h3>
+              <p class="section-hint">KPI totals and category mix, as a PDF.</p>
+              <button type="button" class="btn" data-report-type="analytics_summary">Generate</button>
+            </div>
+            <div class="card report-type-card">
+              <h3>Sales Forecast</h3>
+              <p class="section-hint">30-day revenue forecast, as a PDF.</p>
+              <button type="button" class="btn" data-report-type="sales_forecast">Generate</button>
+            </div>
+            <div class="card report-type-card">
+              <h3>Customer Segmentation</h3>
+              <p class="section-hint">RFM segment summary, as a PDF.</p>
+              <button type="button" class="btn" data-report-type="customer_segmentation">Generate</button>
+            </div>
+            <div class="card report-type-card">
+              <h3>Cleaned Dataset</h3>
+              <p class="section-hint">The cleaned data, as an Excel file.</p>
+              <button type="button" class="btn" data-report-type="cleaned_dataset">Generate</button>
+            </div>
+          </section>
+
+          <section class="card">
+            <h3>Generated reports</h3>
+            <div id="reports-empty" class="section-hint">No reports generated yet.</div>
+            <div class="table-scroll">
+              <table class="data-table" id="reports-table" hidden>
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Generated</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="reports-table-body"></tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </main>
     </div>
   </div>
   <script type="module" src="/js/sidebar.js"></script>
+  <script type="module" src="/js/pages/reports.js"></script>
 </body>
 </html>

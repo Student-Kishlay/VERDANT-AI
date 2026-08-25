@@ -19,6 +19,7 @@ const EMPTY_DATA = {
   segments: [],
   anomalies: [],
   chat_messages: [],
+  report_shares: [],
 };
 
 export function createDb(filePath) {
@@ -282,6 +283,58 @@ export function createDb(filePath) {
         .filter((m) => m.workspace_id === workspaceId && m.dataset_id === datasetId)
         .sort((a, b) => (a.created_at < b.created_at ? -1 : 1))
         .slice(-limit);
+    },
+
+    // ── report_shares ─────────────────────────────────────────────────────
+    // Doubles as both "the record of a generated report" and "the sharing
+    // metadata" — the target schema (§2) has no separate reports table, so
+    // generating a report and issuing its share link happen together here.
+    createReportShare({ workspaceId, datasetId, reportType, storagePath, token, createdBy, expiresAt }) {
+      const share = {
+        id: randomUUID(),
+        workspace_id: workspaceId,
+        dataset_id: datasetId,
+        report_type: reportType,
+        storage_path: storagePath,
+        token,
+        created_by: createdBy,
+        created_at: new Date().toISOString(),
+        expires_at: expiresAt,
+        revoked: false,
+      };
+      data.report_shares.push(share);
+      persist();
+      return share;
+    },
+
+    getShareById(id) {
+      return data.report_shares.find((s) => s.id === id) || null;
+    },
+
+    getShareByToken(token) {
+      return data.report_shares.find((s) => s.token === token) || null;
+    },
+
+    listSharesForWorkspace(workspaceId) {
+      return data.report_shares.filter((s) => s.workspace_id === workspaceId);
+    },
+
+    refreshShare(id, { token, expiresAt }) {
+      const share = data.report_shares.find((s) => s.id === id);
+      if (!share) return null;
+      share.token = token;
+      share.expires_at = expiresAt;
+      share.revoked = false;
+      persist();
+      return share;
+    },
+
+    revokeShare(id) {
+      const share = data.report_shares.find((s) => s.id === id);
+      if (!share) return null;
+      share.revoked = true;
+      persist();
+      return share;
     },
   };
 }

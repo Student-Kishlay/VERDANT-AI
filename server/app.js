@@ -19,6 +19,7 @@ import { buildContextSummary } from './pipeline/build-context-summary.js';
 import { verifyChartGrounding } from './pipeline/verify-chart-grounding.js';
 import { getProvider } from './llm/index.js';
 import { createRateLimiter } from './rate-limiter.js';
+import { generateReport, REPORT_TYPES } from './pipeline/generate-report.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -34,6 +35,7 @@ const DEFAULT_CONFIG = {
   chartGroundingThreshold: 0.6,
   aiChatMaxMessagesPerWorkspacePerHour: 60,
   aiChatMaxContextTokens: 4000,
+  defaultShareLinkExpiryDays: 7,
 };
 
 // Shared error/success envelope, per Master Prompt §5.5:
@@ -46,9 +48,10 @@ function fail(res, status, code, message) {
   return res.status(status).json({ ok: false, error: { code, message } });
 }
 
-export function createApp(db, { jwtSecret, storage, config } = {}) {
+export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}) {
   const cfg = { ...DEFAULT_CONFIG, ...config };
   const store = storage || createStorage(path.join(os.tmpdir(), 'verdant-bi-uploads', crypto.randomUUID()));
+  const reportStore = reportStorage || createStorage(path.join(os.tmpdir(), 'verdant-bi-reports', crypto.randomUUID()));
   const chatRateLimiter = createRateLimiter();
 
   const app = express();
@@ -566,6 +569,131 @@ export function createApp(db, { jwtSecret, storage, config } = {}) {
     );
 
     return ok(res, { message: publicChatMessage(assistantMessage) }, 201);
+  });
+
+  // ── Reports & Secure Sharing (Milestone 7) ──────────────────────────────
+
+  function publicShare(share) {
+    return {
+      id: share.id,
+      workspace_id: share.workspace_id,
+      dataset_id: share.dataset_id,
+      report_type: share.report_type,
+      url: `/public/shares/${share.token}`,
+      created_at: share.created_at,
+      expires_at: share.expires_at,
+      revoked: share.revoked,
+      status: share.revoked ? 'revoked' : new Date(share.expires_at) < new Date() ? 'expired' : 'active',
+    };
+  }
+
+  function newExpiry() {
+    return new Date(Date.now() + cfg.defaultShareLinkExpiryDays * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  // Generating a report immediately issues its share link — report_shares
+  // (§2) is the only table that stores a generated file's storage_path,
+  // there's no separate "reports" table, so generating IS issuing.
+  app.post('/api/datasets/:id/reports', requireAuth, async (req, res) => {
+    const dataset = getAccessibleDataset(req);
+    if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
+    if (dataset.status !== 'ready') {
+      return fail(res, 409, 'NOT_READY', `Dataset is ${dataset.status}, not ready.`);
+    }
+
+    const { report_type: reportType } = req.body || {};
+    if (!REPORT_TYPES.includes(reportType)) {
+      return fail(res, 400, 'INVALID_INPUT', `report_type must be one of: ${REPORT_TYPES.join(', ')}.`);
+    }
+
+    const columns = db.getColumnMaps(dataset.id).map(withEffectiveRole);
+    const rows = db.getAllDatasetRows(dataset.id);
+
+    let file;
+    try {
+      file = await generateReport(reportType, { dataset, columns, rows });
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          function: 'generate-report',
+          workspace_id: dataset.workspace_id,
+          dataset_id: dataset.id,
+          error_message: err.message,
+          timestamp: new Date().toISOString(),
+        })
+      );
+      return fail(res, 500, 'GENERATE_FAILED', 'Could not generate this report. Please try again.');
+    }
+
+    const reportId = crypto.randomUUID();
+    const storagePath = reportStore.saveReport(file.buffer, {
+      workspaceId: dataset.workspace_id,
+      reportId,
+      extension: file.extension,
+    });
+
+    const share = db.createReportShare({
+      workspaceId: dataset.workspace_id,
+      datasetId: dataset.id,
+      reportType,
+      storagePath,
+      token: crypto.randomUUID(),
+      createdBy: req.user.id,
+      expiresAt: newExpiry(),
+    });
+
+    return ok(res, { share: publicShare(share) }, 201);
+  });
+
+  app.get('/api/datasets/:id/reports', requireAuth, (req, res) => {
+    const dataset = getAccessibleDataset(req);
+    if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
+    const shares = db.listSharesForWorkspace(dataset.workspace_id).filter((s) => s.dataset_id === dataset.id);
+    return ok(res, { shares: shares.map(publicShare) });
+  });
+
+  app.get('/api/workspaces/:id/shares', requireAuth, (req, res) => {
+    if (!db.isMember(req.params.id, req.user.id)) {
+      return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
+    }
+    return ok(res, { shares: db.listSharesForWorkspace(req.params.id).map(publicShare) });
+  });
+
+  function getAccessibleShare(req) {
+    const share = db.getShareById(req.params.id);
+    if (!share || !db.isMember(share.workspace_id, req.user.id)) return null;
+    return share;
+  }
+
+  app.post('/api/shares/:id/refresh', requireAuth, (req, res) => {
+    const share = getAccessibleShare(req);
+    if (!share) return fail(res, 404, 'NOT_FOUND', 'Share not found.');
+    const updated = db.refreshShare(share.id, { token: crypto.randomUUID(), expiresAt: newExpiry() });
+    return ok(res, { share: publicShare(updated) });
+  });
+
+  app.post('/api/shares/:id/revoke', requireAuth, (req, res) => {
+    const share = getAccessibleShare(req);
+    if (!share) return fail(res, 404, 'NOT_FOUND', 'Share not found.');
+    const updated = db.revokeShare(share.id);
+    return ok(res, { share: publicShare(updated) });
+  });
+
+  // Unauthenticated — the one and only file-serving path. Never resolves or
+  // exposes the raw storage_path; the token is checked server-side and the
+  // file streamed directly.
+  app.get('/public/shares/:token', (req, res) => {
+    const share = db.getShareByToken(req.params.token);
+    if (!share) return fail(res, 404, 'NOT_FOUND', 'This link is not valid.');
+    if (share.revoked) return fail(res, 403, 'REVOKED', 'This link has been revoked.');
+    if (new Date(share.expires_at) < new Date()) return fail(res, 403, 'EXPIRED', 'This link has expired.');
+
+    const buffer = reportStore.readReport(share.storage_path);
+    const extension = path.extname(share.storage_path);
+    const mimeType = extension === '.xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf';
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${share.report_type}${extension}"`);
+    return res.send(buffer);
   });
 
   return app;

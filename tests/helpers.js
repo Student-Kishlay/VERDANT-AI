@@ -11,10 +11,12 @@ import { createStorage } from '../server/storage.js';
 export async function startServer(configOverrides = {}) {
   const db = createDb(null);
   const storage = createStorage(path.join(os.tmpdir(), 'verdant-bi-test-uploads', crypto.randomUUID()));
+  const reportStorage = createStorage(path.join(os.tmpdir(), 'verdant-bi-test-reports', crypto.randomUUID()));
   const app = createApp(db, {
     jwtSecret: 'test-secret',
     storage,
-    config: { maxUploadFileSizeMb: 25, maxUploadRowCount: 200000, ...configOverrides },
+    reportStorage,
+    config: { maxUploadFileSizeMb: 25, maxUploadRowCount: 200000, defaultShareLinkExpiryDays: 7, ...configOverrides },
   });
   const server = app.listen(0);
   const { port } = server.address();

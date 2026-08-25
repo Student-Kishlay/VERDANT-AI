@@ -340,3 +340,42 @@ backend's abuse controls.
 
 **Error codes:** `INVALID_INPUT`, `NOT_FOUND`, `NOT_READY`, `RATE_LIMITED`
 (429, with the doc's exact user-facing message).
+
+## `generate-report` + `manage-shares`
+
+**Adaptation, stated up front:** §13 describes these as two functions, but
+`report_shares` (§2) is the *only* table that stores a generated file's
+`storage_path` — there is no separate "reports" table. So in this build,
+**generating a report immediately issues its share link** — one `POST`
+creates the file, stores it, and returns a `report_shares` row (token +
+`DEFAULT_SHARE_LINK_EXPIRY_DAYS` expiry) in a single step. `manage-shares`'s
+`refresh` and `revoke` then operate on that existing row. There's no
+separate "issue" action — regenerating a report is the equivalent of a
+fresh issue.
+
+- `POST /api/datasets/:id/reports` (`{ report_type }`, one of
+  `analytics_summary` | `sales_forecast` | `customer_segmentation` |
+  `cleaned_dataset`) → `{ share: { id, report_type, url, created_at,
+  expires_at, revoked, status } }`. `status` is derived (`active` |
+  `expired` | `revoked`), not stored redundantly.
+- `GET /api/datasets/:id/reports` — shares for one dataset (`/reports.html`).
+- `GET /api/workspaces/:id/shares` — every share in a workspace (`/shares.html`).
+- `POST /api/shares/:id/refresh` / `POST /api/shares/:id/revoke` —
+  membership-checked against the share's own workspace.
+- `GET /public/shares/:token` — **the one and only file-serving path**, no
+  authentication. 404 if the token doesn't exist, 403 `REVOKED` /
+  403 `EXPIRED` as appropriate, otherwise streams the file with the correct
+  `Content-Type`. `share.url` in every response above is already this
+  path — the client never sees or constructs a raw `storage_path`.
+
+**Report content (§13, no chart-rendering library used):**
+`server/pipeline/generate-report.js` builds `analytics_summary` /
+`sales_forecast` / `customer_segmentation` as `pdf-lib` PDFs — title,
+timestamp, and the relevant numbers as aligned text tables, reusing
+`compute-kpis.js`/`forecast-revenue.js`/`segment-customers.js` directly
+rather than recomputing their math. `cleaned_dataset` is an `exceljs` XLSX
+export of the dataset's cleaned rows.
+
+**Error codes:** `NOT_FOUND`, `NOT_READY`, `INVALID_INPUT` (bad
+`report_type`), `GENERATE_FAILED`, and on the public route:
+`NOT_FOUND` / `REVOKED` / `EXPIRED`.

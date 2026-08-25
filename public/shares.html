@@ -6,6 +6,8 @@
   <title>Share Manager — Verdant BI</title>
   <link rel="stylesheet" href="/css/base.css" />
   <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/pages/upload.css" />
+  <link rel="stylesheet" href="/css/pages/reports.css" />
 </head>
 <body>
   <div class="app-layout">
@@ -13,13 +15,28 @@
     <div class="app-main">
       <header id="topbar-mount"></header>
       <main class="page-content">
-        <div class="card empty-state">
-          <h3>No share links yet</h3>
-          <p>Generate a report to create your first shareable link. This table (created / expires / status / copy / open / refresh / revoke) ships alongside Reports in Milestone 7.</p>
+        <div class="card">
+          <h3>All share links</h3>
+          <div id="shares-empty" class="section-hint">No share links yet. Generate a report to create your first one.</div>
+          <div class="table-scroll">
+            <table class="data-table" id="shares-table" hidden>
+              <thead>
+                <tr>
+                  <th>Report</th>
+                  <th>Created</th>
+                  <th>Expires</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="shares-table-body"></tbody>
+            </table>
+          </div>
         </div>
       </main>
     </div>
   </div>
   <script type="module" src="/js/sidebar.js"></script>
+  <script type="module" src="/js/pages/shares.js"></script>
 </body>
 </html>

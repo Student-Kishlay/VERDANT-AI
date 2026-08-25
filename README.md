@@ -4,7 +4,7 @@ Zero-configuration, self-service BI platform: upload a sales spreadsheet, get
 cleaned data, KPI dashboards, forecasts, RFM segmentation, anomaly detection,
 and a grounded AI chat assistant. Full spec: `Verdant_BI_Master_Prompt_v2.md`.
 
-## Current status: Milestones 1-6 of 10
+## Current status: Milestones 1-7 of 10
 
 This build has no InsForge project/credentials connected yet, so it currently
 runs against a **local mock backend** (`server/`) that implements the same
@@ -62,15 +62,24 @@ Done so far:
   tested against a live key** — there's no Groq or InsForge credential
   available in this environment. Verify it actually works before relying on
   it in production.
+- Reports & Secure Sharing (`/reports.html`, `/shares.html`, §13): four
+  report types — Analytics Summary, Sales Forecast, and Customer
+  Segmentation as PDFs (`pdf-lib`, plain aligned-text tables rather than
+  chart images — no chart-rendering dependency needed), and the cleaned
+  dataset as an XLSX export (`exceljs`). Generating a report immediately
+  issues its share link (one `report_shares` row covers both concerns, per
+  the target schema); revoking or letting a link expire makes the public
+  URL 403 on the next request, checked server-side — the raw storage path
+  is never exposed to the client.
 - `login.html`, `index.html`, `upload.html`, `dashboard.html`, `insights.html`,
-  and `chat.html` are all fully functional now; the remaining 4 pages render
-  the shared shell with an explicit empty state describing which later
-  milestone builds them out.
+  `chat.html`, `reports.html`, and `shares.html` are all fully functional
+  now; the remaining 2 pages render the shared shell with an explicit empty
+  state describing which later milestone builds them out.
 
-Not yet built (Milestones 7-10): reports & sharing, team invitations, and
-the eventual InsForge migration. Each is its own milestone with its own
-review checkpoint, per the master prompt's own working rule (§0.5/§19) —
-don't assume anything past Milestone 6 is implemented.
+Not yet built (Milestones 8-10): team/workspace management, and the
+eventual InsForge migration. Each is its own milestone with its own review
+checkpoint, per the master prompt's own working rule (§0.5/§19) —
+don't assume anything past Milestone 7 is implemented.
 
 ## Running it
 

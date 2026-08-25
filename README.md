@@ -4,7 +4,7 @@ Zero-configuration, self-service BI platform: upload a sales spreadsheet, get
 cleaned data, KPI dashboards, forecasts, RFM segmentation, anomaly detection,
 and a grounded AI chat assistant. Full spec: `Verdant_BI_Master_Prompt_v2.md`.
 
-## Current status: Milestones 1-8 of 10
+## Current status: Milestones 1-9 of 10
 
 This build has no InsForge project/credentials connected yet, so it currently
 runs against a **local mock backend** (`server/`) that implements the same
@@ -83,12 +83,24 @@ Done so far:
   is now fully functional. `profile.html` remains a stub (account info +
   upload/chat history — never explicitly scoped to a milestone in the
   master prompt's numbered list).
+- Responsiveness + accessibility pass (§17 Milestone 9): audited all 10
+  pages at 1440/768/375px plus keyboard focus visibility. Found and fixed
+  two real issues rather than assuming the design was already compliant:
+  (1) the primary button/badge/logo color (`--color-accent`, `#16a673`) and
+  the light-blue brand color (`--color-brand-blue`, `#5b8dbe`) both failed
+  WCAG AA for white button text (3.12:1 / 3.50:1 against the 4.5:1
+  requirement) — darkened both slightly (now 4.63:1 / 4.64:1), which also
+  fixed the success-pill text contrast as a side effect; (2) a genuine
+  layout bug where the sidebar's wrapper element reserved ~284px of empty
+  vertical space above the header on some pages at mobile widths, found via
+  manual screenshot review (the automated horizontal-overflow check alone
+  wouldn't have caught it) and fixed by removing the wrapper's box
+  entirely (`display: contents`) at the mobile breakpoint.
 
-Not yet built (Milestone 9-10): a dedicated auth/security hardening pass,
-the full §15 test suite as a single reviewed sweep, final docs, and the
-eventual InsForge migration. Each is its own milestone with its own review
-checkpoint, per the master prompt's own working rule (§0.5/§19) —
-don't assume anything past Milestone 8 is implemented.
+Not yet built (Milestone 10): the full §15 test suite as one reviewed
+sweep, final docs, and deployment prep. It's its own milestone with its own
+review checkpoint, per the master prompt's own working rule (§0.5/§19) —
+don't assume anything past Milestone 9 is implemented.
 
 ## Running it
 

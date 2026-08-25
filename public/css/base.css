@@ -4,12 +4,15 @@
   --color-sidebar-text: #f0f4fa;
   --color-sidebar-text-dim: #b3c3da;
 
-  --color-accent: #16a673;
-  --color-accent-hover: #128a60;
+  /* Darkened from the original #16a673/#5b8dbe — those failed WCAG AA
+     (3.12:1 / 3.50:1) for white button text; these clear 4.5:1 while
+     staying visibly the same emerald/slate-blue hues (§9, Milestone 9 audit). */
+  --color-accent: #12855c;
+  --color-accent-hover: #0e6e4d;
   --color-accent-contrast: #ffffff;
 
-  --color-brand-blue: #5b8dbe;
-  --color-brand-blue-hover: #4a78a3;
+  --color-brand-blue: #4d78a2;
+  --color-brand-blue-hover: #446a8f;
   --color-brand-blue-contrast: #ffffff;
 
   --color-bg: #f4f6f5;

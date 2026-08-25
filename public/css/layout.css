@@ -204,6 +204,15 @@
     grid-template-columns: 1fr;
   }
 
+  /* .sidebar itself is position:fixed below, so its wrapper should occupy
+     no layout space — but on some pages the grid row still sized itself
+     off the wrapper (a real, reproducible engine quirk, not a race).
+     display:contents removes the wrapper's own box entirely, sidestepping
+     it regardless of root cause. */
+  #sidebar-mount {
+    display: contents;
+  }
+
   .sidebar {
     position: fixed;
     inset: 0 30% 0 0;

@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#eef4fb"/>
+      <stop offset="55%" stop-color="#bdd2ea"/>
+      <stop offset="100%" stop-color="#7e9fc4"/>
+    </linearGradient>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7e9fc4"/>
+      <stop offset="100%" stop-color="#324e6e"/>
+    </linearGradient>
+    <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.65"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="waterClip">
+      <rect x="0" y="580" width="1600" height="320"/>
+    </clipPath>
+  </defs>
+
+  <rect x="0" y="0" width="1600" height="900" fill="url(#sky)"/>
+  <circle cx="1230" cy="190" r="140" fill="url(#sunGlow)"/>
+  <circle cx="1230" cy="190" r="55" fill="#ffffff" opacity="0.55"/>
+
+  <!-- far mountain range -->
+  <polygon points="0,560 150,320 300,420 420,300 580,450 700,340 850,460 1000,330 1150,440 1300,360 1450,470 1600,400 1600,560"
+           fill="#9fb7d8" opacity="0.85"/>
+
+  <!-- mid mountain range -->
+  <polygon points="0,560 100,400 250,480 380,380 520,500 650,410 800,510 950,400 1100,500 1250,420 1400,510 1600,460 1600,560"
+           fill="#6d90ba"/>
+
+  <!-- near mountain range -->
+  <polygon points="0,580 120,450 260,540 400,430 560,560 700,440 860,560 1000,460 1150,570 1300,470 1450,560 1600,500 1600,580"
+           fill="#3d5a80"/>
+
+  <!-- snow caps -->
+  <polygon points="95,468 120,450 148,470 120,462" fill="#ffffff" opacity="0.8"/>
+  <polygon points="375,448 400,430 428,450 400,442" fill="#ffffff" opacity="0.8"/>
+  <polygon points="975,478 1000,460 1028,480 1000,472" fill="#ffffff" opacity="0.75"/>
+
+  <!-- water -->
+  <rect x="0" y="580" width="1600" height="320" fill="url(#water)"/>
+
+  <!-- reflection of the mountains, mirrored about the shoreline -->
+  <g transform="translate(0,1160) scale(1,-1)" opacity="0.22" clip-path="url(#waterClip)">
+    <polygon points="0,560 100,400 250,480 380,380 520,500 650,410 800,510 950,400 1100,500 1250,420 1400,510 1600,460 1600,560"
+             fill="#6d90ba"/>
+    <polygon points="0,580 120,450 260,540 400,430 560,560 700,440 860,560 1000,460 1150,570 1300,470 1450,560 1600,500 1600,580"
+             fill="#3d5a80"/>
+  </g>
+
+  <!-- gentle ripples -->
+  <g stroke="#ffffff" stroke-opacity="0.18" stroke-width="3" stroke-linecap="round">
+    <line x1="80" y1="650" x2="260" y2="650"/>
+    <line x1="340" y1="700" x2="600" y2="700"/>
+    <line x1="120" y1="760" x2="420" y2="760"/>
+    <line x1="700" y1="660" x2="920" y2="660"/>
+    <line x1="980" y1="730" x2="1260" y2="730"/>
+    <line x1="1100" y1="800" x2="1440" y2="800"/>
+    <line x1="1300" y1="670" x2="1560" y2="670"/>
+  </g>
+</svg>

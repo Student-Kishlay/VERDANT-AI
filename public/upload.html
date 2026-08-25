@@ -6,6 +6,7 @@
   <title>Upload & Clean — Verdant BI</title>
   <link rel="stylesheet" href="/css/base.css" />
   <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/pages/upload.css" />
 </head>
 <body>
   <div class="app-layout">
@@ -13,13 +14,52 @@
     <div class="app-main">
       <header id="topbar-mount"></header>
       <main class="page-content">
-        <div class="card empty-state">
-          <h3>Upload &amp; Clean is coming in Milestone 3</h3>
-          <p>Drag-and-drop a CSV or XLSX file here to get a cleaned dataset with a column-role review table. This page is next after Milestones 1 &amp; 2 (auth + shared shell) are confirmed.</p>
+        <div id="upload-status" class="upload-status" hidden></div>
+
+        <div class="card dropzone" id="dropzone" tabindex="0" role="button"
+             aria-label="Upload a CSV or XLSX file">
+          <input type="file" id="file-input" accept=".csv,.xlsx" hidden />
+          <p class="dropzone-title">Drag &amp; drop a CSV or XLSX file here</p>
+          <p class="dropzone-sub">or click to browse — <span id="dropzone-limits"></span></p>
         </div>
+
+        <section id="summary-section" class="card" hidden>
+          <h3>Cleaning summary</h3>
+          <div id="summary-pills" class="pill-row"></div>
+        </section>
+
+        <section id="columns-section" class="card" hidden>
+          <h3>Column roles</h3>
+          <p class="section-hint">Verdant guessed a role for each column below. Fix any that look wrong — this
+            drives every KPI, forecast, and chart built on this dataset.</p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Column</th>
+                  <th>Detected role</th>
+                  <th>Confidence</th>
+                  <th>Override</th>
+                </tr>
+              </thead>
+              <tbody id="columns-table-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="preview-section" class="card" hidden>
+          <h3>Preview (first rows)</h3>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead id="preview-table-head"></thead>
+              <tbody id="preview-table-body"></tbody>
+            </table>
+          </div>
+        </section>
       </main>
     </div>
   </div>
   <script type="module" src="/js/sidebar.js"></script>
+  <script type="module" src="/js/pages/upload.js"></script>
 </body>
 </html>

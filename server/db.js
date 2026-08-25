@@ -8,15 +8,25 @@ import { randomUUID } from 'node:crypto';
 // workspace-scoped data goes through membership, mirroring the RLS policies
 // in db/schema.sql so the isolation behavior matches what the real backend
 // will enforce.
+const EMPTY_DATA = {
+  users: [],
+  workspaces: [],
+  workspace_members: [],
+  datasets: [],
+  column_maps: [],
+  dataset_rows: [],
+};
+
 export function createDb(filePath) {
-  let data = { users: [], workspaces: [], workspace_members: [] };
+  let data = { ...EMPTY_DATA };
 
   if (filePath && fs.existsSync(filePath)) {
     try {
-      data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      const loaded = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      data = { ...EMPTY_DATA, ...loaded };
     } catch {
       // corrupt/empty file — start fresh rather than crashing the server
-      data = { users: [], workspaces: [], workspace_members: [] };
+      data = { ...EMPTY_DATA };
     }
   }
 
@@ -89,6 +99,99 @@ export function createDb(filePath) {
 
     getWorkspaceById(id) {
       return data.workspaces.find((w) => w.id === id) || null;
+    },
+
+    // ── datasets ──────────────────────────────────────────────────────────
+    createDataset({ workspaceId, fileName, fileHash, storagePath, uploadedBy }) {
+      const dataset = {
+        id: randomUUID(),
+        workspace_id: workspaceId,
+        file_name: fileName,
+        file_hash: fileHash,
+        row_count: null,
+        column_count: null,
+        storage_path: storagePath,
+        cleaning_summary: null,
+        methodology_version: null,
+        status: 'processing',
+        failure_reason: null,
+        uploaded_by: uploadedBy,
+        uploaded_at: new Date().toISOString(),
+      };
+      data.datasets.push(dataset);
+      persist();
+      return dataset;
+    },
+
+    updateDataset(id, patch) {
+      const dataset = data.datasets.find((d) => d.id === id);
+      if (!dataset) return null;
+      Object.assign(dataset, patch);
+      persist();
+      return dataset;
+    },
+
+    getDatasetById(id) {
+      return data.datasets.find((d) => d.id === id) || null;
+    },
+
+    findDatasetByHash(workspaceId, fileHash) {
+      return data.datasets.find((d) => d.workspace_id === workspaceId && d.file_hash === fileHash) || null;
+    },
+
+    listDatasetsForWorkspace(workspaceId) {
+      return data.datasets.filter((d) => d.workspace_id === workspaceId);
+    },
+
+    deleteDataset(id) {
+      data.datasets = data.datasets.filter((d) => d.id !== id);
+      data.column_maps = data.column_maps.filter((c) => c.dataset_id !== id);
+      data.dataset_rows = data.dataset_rows.filter((r) => r.dataset_id !== id);
+      persist();
+    },
+
+    // ── column_maps ───────────────────────────────────────────────────────
+    setColumnMaps(datasetId, columns) {
+      data.column_maps = data.column_maps.filter((c) => c.dataset_id !== datasetId);
+      for (const col of columns) {
+        data.column_maps.push({
+          dataset_id: datasetId,
+          column_name: col.column_name,
+          detected_role: col.detected_role,
+          confidence: col.confidence,
+          user_override: null,
+        });
+      }
+      persist();
+    },
+
+    getColumnMaps(datasetId) {
+      return data.column_maps.filter((c) => c.dataset_id === datasetId);
+    },
+
+    setColumnOverride(datasetId, columnName, role) {
+      const entry = data.column_maps.find((c) => c.dataset_id === datasetId && c.column_name === columnName);
+      if (!entry) return null;
+      entry.user_override = role;
+      persist();
+      return entry;
+    },
+
+    // ── dataset_rows ──────────────────────────────────────────────────────
+    saveDatasetRows(datasetId, rows) {
+      data.dataset_rows = data.dataset_rows.filter((r) => r.dataset_id !== datasetId);
+      rows.forEach((row, index) => {
+        data.dataset_rows.push({ id: randomUUID(), dataset_id: datasetId, row_index: index, data: row });
+      });
+      persist();
+    },
+
+    getDatasetRowsPreview(datasetId, limit = 20) {
+      return data.dataset_rows
+        .filter((r) => r.dataset_id === datasetId)
+        .sort((a, b) => a.row_index - b.row_index)
+        .slice(0, limit)
+        .map((r) => r.data);
     },
   };
 }

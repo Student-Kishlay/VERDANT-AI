@@ -49,7 +49,9 @@ function buildSidebar(session, workspaces, activeWorkspaceId) {
   switcherWrap.appendChild(select);
   aside.appendChild(switcherWrap);
 
-  // Active dataset indicator (no dataset milestone yet — always empty state)
+  // Active dataset indicator — populated asynchronously by refreshActiveDataset()
+  // once this element is in the DOM (it needs to fetch, and possibly render a
+  // working delete action).
   const datasetIndicator = el('div', { className: 'active-dataset' });
   datasetIndicator.appendChild(el('span', { className: 'active-dataset-label', text: 'Active dataset' }));
   datasetIndicator.appendChild(el('span', { className: 'active-dataset-value', text: 'None uploaded yet' }));
@@ -84,6 +86,40 @@ function buildSidebar(session, workspaces, activeWorkspaceId) {
   aside.appendChild(chip);
 
   return aside;
+}
+
+async function refreshActiveDataset(container, workspaceId) {
+  const datasetId = insforge.datasets.getActiveId(workspaceId);
+  if (!datasetId) return; // stays on the default "None uploaded yet" markup
+
+  let dataset;
+  try {
+    ({ dataset } = await insforge.datasets.get(datasetId));
+  } catch {
+    // Deleted elsewhere, or belongs to a workspace we've since switched away
+    // from — clear the stale pointer rather than showing a broken indicator.
+    insforge.datasets.clearActiveId(workspaceId);
+    return;
+  }
+
+  const valueEl = container.querySelector('.active-dataset-value');
+  const rowCountText = dataset.status === 'ready' ? `${dataset.row_count.toLocaleString()} rows` : dataset.status;
+  valueEl.textContent = `${dataset.file_name} · ${rowCountText}`;
+
+  if (!container.querySelector('.active-dataset-delete')) {
+    const deleteBtn = el('button', {
+      className: 'active-dataset-delete',
+      text: 'Delete active dataset',
+      attrs: { type: 'button' },
+    });
+    deleteBtn.addEventListener('click', async () => {
+      if (!window.confirm(`Delete "${dataset.file_name}"? This cannot be undone.`)) return;
+      await insforge.datasets.remove(dataset.id);
+      insforge.datasets.clearActiveId(workspaceId);
+      window.location.reload();
+    });
+    container.appendChild(deleteBtn);
+  }
 }
 
 function buildTopbar(activeItem) {
@@ -129,7 +165,11 @@ async function init() {
   sidebarMount.replaceChildren(buildSidebar(session, session.workspaces, activeWorkspaceId));
   topbarMount.replaceChildren(buildTopbar(activeItem));
 
-  document.dispatchEvent(new CustomEvent('verdant:session-ready', { detail: { session } }));
+  if (activeWorkspaceId) {
+    refreshActiveDataset(sidebarMount.querySelector('.active-dataset'), activeWorkspaceId);
+  }
+
+  document.dispatchEvent(new CustomEvent('verdant:session-ready', { detail: { session, activeWorkspaceId } }));
 }
 
 init();

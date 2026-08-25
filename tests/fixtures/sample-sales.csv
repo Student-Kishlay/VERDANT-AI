@@ -1,0 +1,13 @@
+Order Date,Customer Name,Region,Revenue,Quantity
+2024-01-01,Alice,North,100,2
+2024-01-02,Bob,South,200,3
+2024-01-03,Carol,East,,1
+2024-01-04,Dave,West,400,4
+,Eve,North,500,5
+2024-01-06,Frank,,600,6
+2024-01-07,Grace,South,N/A,7
+2024-01-01,Alice,North,100,2
+,,,,
+2024-01-09,Heidi,East,900,9
+2024-01-10,Ivan,West,1000,10
+2024-01-11,Judy,North,1100,11

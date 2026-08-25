@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Verdant BI - self-service BI platform (local mock-backend build, Milestones 1-2)",
+  "description": "Verdant BI - self-service BI platform (local mock-backend build, Milestones 1-3)",
   "scripts": {
     "dev": "node server/index.js",
     "start": "node server/index.js",
@@ -13,7 +13,9 @@
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "express": "^4.19.2",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.0"
   }
 }

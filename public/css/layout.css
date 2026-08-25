@@ -64,6 +64,23 @@
 
 .active-dataset-value {
   font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.active-dataset-delete {
+  align-self: flex-start;
+  margin-top: 0.35rem;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.72rem;
+  color: #f2b8b5;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.active-dataset-delete:hover {
+  color: #ffffff;
 }
 
 .sidebar-nav {

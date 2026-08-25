@@ -1,6 +1,6 @@
 # Architecture — current (mock) vs. target (InsForge)
 
-## Current: local mock backend (Milestones 1-2)
+## Current: local mock backend (Milestones 1-3)
 
 ```
 Browser (public/, vanilla HTML/CSS/JS, no build step)
@@ -11,10 +11,19 @@ server/app.js (Express)
  ├─ GET  /api/auth/me
  ├─ GET  /api/workspaces
  ├─ POST /api/workspaces/:id/switch
-   │
-   ▼
-server/db.js — JSON-file store (server/data/db.json)
- └─ users, workspaces, workspace_members
+ ├─ GET  /api/config
+ ├─ POST /api/datasets/upload  ──► server/pipeline/parse-spreadsheet.js
+ │                                 server/pipeline/clean-dataset.js   (§5)
+ │                                 server/pipeline/detect-columns.js  (§6)
+ ├─ GET  /api/datasets, /api/datasets/:id
+ ├─ POST /api/datasets/:id/columns/:column_name/override
+ └─ DELETE /api/datasets/:id
+   │                                    │
+   ▼                                    ▼
+server/db.js — JSON-file store    server/storage.js — raw uploads on disk
+ └─ users, workspaces,                 (server/data/uploads/)
+    workspace_members, datasets,
+    column_maps, dataset_rows
     (subset of db/schema.sql — the real target schema)
 ```
 

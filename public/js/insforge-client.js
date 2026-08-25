@@ -11,17 +11,18 @@
 const TOKEN_KEY = 'verdant_token';
 const ACTIVE_WORKSPACE_KEY = 'verdant_active_workspace';
 
-async function request(path, { method = 'GET', body, auth = true } = {}) {
-  const headers = { 'Content-Type': 'application/json' };
+async function request(path, { method = 'GET', body, auth = true, formData } = {}) {
+  const headers = {};
   if (auth) {
     const token = localStorage.getItem(TOKEN_KEY);
     if (token) headers.Authorization = `Bearer ${token}`;
   }
-  const res = await fetch(path, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  let requestBody = formData;
+  if (formData === undefined && body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    requestBody = JSON.stringify(body);
+  }
+  const res = await fetch(path, { method, headers, body: requestBody });
   const json = await res.json().catch(() => null);
   if (!res.ok || !json || json.ok === false) {
     const err = new Error(json?.error?.message || `Request failed (${res.status})`);
@@ -82,6 +83,48 @@ export const insforge = {
     },
     getActiveId() {
       return localStorage.getItem(ACTIVE_WORKSPACE_KEY);
+    },
+  },
+
+  config: {
+    get() {
+      return request('/api/config', { auth: false });
+    },
+  },
+
+  datasets: {
+    upload(file, workspaceId) {
+      const formData = new FormData();
+      formData.append('workspace_id', workspaceId);
+      formData.append('file', file, file.name);
+      return request('/api/datasets/upload', { method: 'POST', formData });
+    },
+    get(id) {
+      return request(`/api/datasets/${id}`);
+    },
+    list(workspaceId) {
+      return request(`/api/datasets?workspace_id=${encodeURIComponent(workspaceId)}`);
+    },
+    setColumnOverride(datasetId, columnName, role) {
+      return request(`/api/datasets/${datasetId}/columns/${encodeURIComponent(columnName)}/override`, {
+        method: 'POST',
+        body: { role },
+      });
+    },
+    remove(id) {
+      return request(`/api/datasets/${id}`, { method: 'DELETE' });
+    },
+    // "Active dataset" has no server-side concept (mirrors the target
+    // schema, which has no such column either) — it's just "the last
+    // dataset this browser uploaded/viewed for this workspace."
+    getActiveId(workspaceId) {
+      return localStorage.getItem(`verdant_active_dataset_${workspaceId}`);
+    },
+    setActiveId(workspaceId, datasetId) {
+      localStorage.setItem(`verdant_active_dataset_${workspaceId}`, datasetId);
+    },
+    clearActiveId(workspaceId) {
+      localStorage.removeItem(`verdant_active_dataset_${workspaceId}`);
     },
   },
 };

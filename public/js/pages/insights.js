@@ -10,6 +10,11 @@ const segmentationUnavailableState = document.getElementById('segmentation-unava
 const segmentationUnavailableMessage = document.getElementById('segmentation-unavailable-message');
 const segmentationContent = document.getElementById('segmentation-content');
 const segmentCards = document.getElementById('segment-cards');
+const anomaliesUnavailableState = document.getElementById('anomalies-unavailable-state');
+const anomaliesUnavailableMessage = document.getElementById('anomalies-unavailable-message');
+const anomaliesContent = document.getElementById('anomalies-content');
+const anomaliesSummary = document.getElementById('anomalies-summary');
+const anomaliesTableBody = document.getElementById('anomalies-table-body');
 
 const SEGMENT_ORDER = ['Champions', 'Loyal', 'Potential', 'New Customers', 'At Risk', 'Lost'];
 const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
@@ -19,6 +24,7 @@ let datasetId = null;
 let currentHorizon = 7;
 let forecastChart = null;
 let segmentMixChart = null;
+let anomaliesChart = null;
 
 // ── Tabs ─────────────────────────────────────────────────────────────────
 for (const btn of document.querySelectorAll('.tab-btn')) {
@@ -156,6 +162,60 @@ async function loadSegments() {
   renderSegmentMixChart(segmentation.summary_by_label);
 }
 
+function renderAnomaliesChart(flaggedRows) {
+  const ctx = document.getElementById('anomalies-chart');
+  anomaliesChart?.destroy();
+  anomaliesChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: flaggedRows.map((f) => `Row ${f.row_index}`),
+      datasets: [
+        {
+          label: 'Anomaly score',
+          data: flaggedRows.map((f) => f.anomaly_score),
+          backgroundColor: '#d92d20',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, max: 1 } },
+    },
+  });
+}
+
+function renderAnomaliesTable(flaggedRows) {
+  anomaliesTableBody.replaceChildren();
+  for (const f of flaggedRows) {
+    const row = document.createElement('tr');
+    row.appendChild(el('td', { text: String(f.row_index) }));
+    row.appendChild(el('td', { text: f.values.revenue !== undefined ? String(f.values.revenue) : '—' }));
+    row.appendChild(el('td', { text: f.values.quantity !== undefined ? String(f.values.quantity) : '—' }));
+    row.appendChild(el('td', { text: String(f.anomaly_score) }));
+    anomaliesTableBody.appendChild(row);
+  }
+}
+
+async function loadAnomalies() {
+  const { anomalies } = await insforge.datasets.getAnomalies(datasetId);
+
+  if (!anomalies.available) {
+    anomaliesContent.hidden = true;
+    anomaliesUnavailableState.hidden = false;
+    anomaliesUnavailableMessage.textContent = `This dataset has no detected ${anomalies.missing.join(' or ')} column. Fix this on the Upload & Clean page.`;
+    return;
+  }
+
+  anomaliesUnavailableState.hidden = true;
+  anomaliesContent.hidden = false;
+  const pct = ((anomalies.flagged_rows.length / anomalies.total_rows) * 100).toFixed(1);
+  anomaliesSummary.textContent = `${anomalies.flagged_rows.length} of ${anomalies.total_rows} rows flagged as anomalous (${pct}%).`;
+  renderAnomaliesChart(anomalies.flagged_rows);
+  renderAnomaliesTable(anomalies.flagged_rows);
+}
+
 document.addEventListener('verdant:session-ready', async (e) => {
   workspaceId = e.detail.activeWorkspaceId;
   datasetId = insforge.datasets.getActiveId(workspaceId);
@@ -172,7 +232,7 @@ document.addEventListener('verdant:session-ready', async (e) => {
       return;
     }
     insightsContent.hidden = false;
-    await Promise.all([loadForecast(), loadSegments()]);
+    await Promise.all([loadForecast(), loadSegments(), loadAnomalies()]);
   } catch {
     noDatasetState.hidden = false;
   }

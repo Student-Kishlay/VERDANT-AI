@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/css/base.css" />
   <link rel="stylesheet" href="/css/layout.css" />
   <link rel="stylesheet" href="/css/pages/home.css" />
+  <link rel="stylesheet" href="/css/pages/upload.css" />
   <link rel="stylesheet" href="/css/pages/insights.css" />
 </head>
 <body>
@@ -67,9 +68,34 @@
           </section>
 
           <section id="tab-anomalies" class="tab-panel" hidden>
-            <div class="card empty-state">
-              <h3>Anomaly Detection ships in Milestone 5c</h3>
-              <p>Isolation-Forest-flagged outliers will appear here.</p>
+            <div id="anomalies-unavailable-state" class="card empty-state" hidden>
+              <h3>Missing required columns</h3>
+              <p id="anomalies-unavailable-message"></p>
+              <p><a href="/upload.html">Review column roles on the Upload &amp; Clean page →</a></p>
+            </div>
+
+            <div id="anomalies-content" hidden>
+              <p id="anomalies-summary" class="section-hint"></p>
+              <div class="card chart-card">
+                <h3>Anomaly Score by Flagged Row</h3>
+                <div class="chart-wrap"><canvas id="anomalies-chart"></canvas></div>
+              </div>
+              <div class="card" id="anomalies-table-card">
+                <h3>Flagged rows</h3>
+                <div class="table-scroll">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Row</th>
+                        <th>Revenue</th>
+                        <th>Quantity</th>
+                        <th>Anomaly score</th>
+                      </tr>
+                    </thead>
+                    <tbody id="anomalies-table-body"></tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </section>
         </div>

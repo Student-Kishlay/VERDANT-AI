@@ -35,6 +35,13 @@ async function getSegments(base, token, datasetId) {
   return { status: res.status, body: await res.json() };
 }
 
+async function getAnomalies(base, token, datasetId) {
+  const res = await fetch(`${base}/api/datasets/${datasetId}/anomalies`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return { status: res.status, body: await res.json() };
+}
+
 test('GET .../forecast returns a non-negative series of the requested length', async () => {
   const { server, base } = await startServer();
   try {
@@ -146,6 +153,50 @@ test('a user outside the workspace cannot read its segments', async () => {
     const dataset = await uploadFixture(base, owner.token, owner.workspace.id, 'segmentation-sales.csv');
 
     const { status } = await getSegments(base, outsider.token, dataset.id);
+    assert.equal(status, 404);
+  } finally {
+    server.close();
+  }
+});
+
+test('GET .../anomalies flags exactly the 5 designed outliers end to end', async () => {
+  const { server, base } = await startServer();
+  try {
+    const { token, workspace } = await signupAndGetSession(base, 'anomalies-owner@example.com');
+    const dataset = await uploadFixture(base, token, workspace.id, 'anomaly-sales.csv');
+
+    const { status, body } = await getAnomalies(base, token, dataset.id);
+    assert.equal(status, 200);
+    assert.equal(body.data.anomalies.available, true);
+    assert.equal(body.data.anomalies.flagged_rows.length, 5);
+    assert.deepEqual(body.data.anomalies.flagged_rows.map((f) => f.row_index), [95, 96, 97, 98, 99]);
+  } finally {
+    server.close();
+  }
+});
+
+test('recomputing anomalies replaces the set rather than duplicating it', async () => {
+  const { server, base, db } = await startServer();
+  try {
+    const { token, workspace } = await signupAndGetSession(base, 'anomalies-recompute@example.com');
+    const dataset = await uploadFixture(base, token, workspace.id, 'anomaly-sales.csv');
+
+    await getAnomalies(base, token, dataset.id);
+    await getAnomalies(base, token, dataset.id);
+    assert.equal(db.getAnomalies(dataset.id).length, 5);
+  } finally {
+    server.close();
+  }
+});
+
+test('a user outside the workspace cannot read its anomalies', async () => {
+  const { server, base } = await startServer();
+  try {
+    const owner = await signupAndGetSession(base, 'anomalies-owner2@example.com');
+    const outsider = await signupAndGetSession(base, 'anomalies-outsider@example.com');
+    const dataset = await uploadFixture(base, owner.token, owner.workspace.id, 'anomaly-sales.csv');
+
+    const { status } = await getAnomalies(base, outsider.token, dataset.id);
     assert.equal(status, 404);
   } finally {
     server.close();

@@ -128,6 +128,9 @@ export const insforge = {
     getSegments(id) {
       return request(`/api/datasets/${id}/segments`);
     },
+    getAnomalies(id) {
+      return request(`/api/datasets/${id}/anomalies`);
+    },
     // "Active dataset" has no server-side concept (mirrors the target
     // schema, which has no such column either) — it's just "the last
     // dataset this browser uploaded/viewed for this workspace."

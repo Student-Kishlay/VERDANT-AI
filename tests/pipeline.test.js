@@ -9,6 +9,7 @@ import { detectColumns } from '../server/pipeline/detect-columns.js';
 import { computeKpis } from '../server/pipeline/compute-kpis.js';
 import { forecastRevenue } from '../server/pipeline/forecast-revenue.js';
 import { segmentCustomers } from '../server/pipeline/segment-customers.js';
+import { detectAnomalies } from '../server/pipeline/detect-anomalies.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
@@ -291,4 +292,46 @@ test('segmentCustomers reports missing columns instead of guessing', () => {
   const result = segmentCustomers([{ column_name: 'notes', effective_role: null }], [{ notes: 'hi' }]);
   assert.equal(result.available, false);
   assert.deepEqual(result.missing.sort(), ['customer', 'date', 'revenue']);
+});
+
+const ANOMALY_COLUMNS = [
+  { column_name: 'revenue', effective_role: 'revenue' },
+  { column_name: 'quantity', effective_role: 'quantity' },
+];
+
+// tests/fixtures/anomaly-sales.csv: 95 rows in a tight cluster
+// (revenue 90-110, quantity 1-19, all distinct pairs by construction) plus
+// exactly 5 rows (indices 95-99) far outside it in different directions
+// (extreme revenue, extreme quantity, or both) so they can't mutually
+// "protect" each other from isolation. Verified empirically before locking
+// in this assertion (see the Milestone 5c plan).
+async function loadAnomalyFixtureRows() {
+  const { headers, rows } = await loadFixture('anomaly-sales.csv');
+  const cleaned = cleanDataset(headers, rows);
+  return cleaned.rows;
+}
+
+test('detectAnomalies flags exactly the 5 designed outliers — no false positives, no false negatives', async () => {
+  const rows = await loadAnomalyFixtureRows();
+  assert.equal(rows.length, 100); // sanity check: the fixture must survive cleaning with no rows lost
+
+  const result = detectAnomalies(ANOMALY_COLUMNS, rows, { contaminationRate: 0.05 });
+
+  assert.equal(result.available, true);
+  assert.equal(result.flagged_rows.length, 5);
+  assert.deepEqual(result.flagged_rows.map((f) => f.row_index), [95, 96, 97, 98, 99]);
+  assert.ok(result.flagged_rows.every((f) => f.anomaly_score > 0.5 && f.anomaly_score <= 1));
+});
+
+test('detectAnomalies is deterministic: same input twice -> identical flagged rows', async () => {
+  const rows = await loadAnomalyFixtureRows();
+  const first = detectAnomalies(ANOMALY_COLUMNS, rows, { contaminationRate: 0.05 });
+  const second = detectAnomalies(ANOMALY_COLUMNS, rows, { contaminationRate: 0.05 });
+  assert.deepEqual(first, second);
+});
+
+test('detectAnomalies reports missing columns instead of guessing', () => {
+  const result = detectAnomalies([{ column_name: 'notes', effective_role: null }], [{ notes: 'hi' }]);
+  assert.equal(result.available, false);
+  assert.deepEqual(result.missing, ['revenue']);
 });

@@ -17,6 +17,7 @@ const EMPTY_DATA = {
   dataset_rows: [],
   forecasts: [],
   segments: [],
+  anomalies: [],
 };
 
 export function createDb(filePath) {
@@ -238,6 +239,21 @@ export function createDb(filePath) {
 
     getSegments(datasetId) {
       return data.segments.filter((s) => s.dataset_id === datasetId);
+    },
+
+    // ── anomalies ─────────────────────────────────────────────────────────
+    // Replace-all, same rationale as setSegments — a current classification,
+    // not a historical log.
+    setAnomalies(datasetId, anomalies) {
+      data.anomalies = data.anomalies.filter((a) => a.dataset_id !== datasetId);
+      for (const a of anomalies) {
+        data.anomalies.push({ id: randomUUID(), dataset_id: datasetId, flagged_at: new Date().toISOString(), ...a });
+      }
+      persist();
+    },
+
+    getAnomalies(datasetId) {
+      return data.anomalies.filter((a) => a.dataset_id === datasetId);
     },
   };
 }

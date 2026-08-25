@@ -4,7 +4,7 @@ Zero-configuration, self-service BI platform: upload a sales spreadsheet, get
 cleaned data, KPI dashboards, forecasts, RFM segmentation, anomaly detection,
 and a grounded AI chat assistant. Full spec: `Verdant_BI_Master_Prompt_v2.md`.
 
-## Current status: Milestones 1-5b of 10
+## Current status: Milestones 1-5c of 10
 
 This build has no InsForge project/credentials connected yet, so it currently
 runs against a **local mock backend** (`server/`) that implements the same
@@ -37,18 +37,27 @@ Done so far:
   (Recency/Frequency/Monetary, quantile-bucketed 1-5) mapped to one of six
   segment labels (§9), surfaced as size/avg-revenue/avg-recency cards plus a
   customers-per-segment chart. Recomputes replace the prior segment set
-  rather than accumulating duplicates. The Anomaly Detection tab is still a
-  stub — that's Milestone 5c.
+  rather than accumulating duplicates.
+- Insights → Anomaly Detection (`/insights.html`): an Isolation Forest built
+  from scratch (§10, no ML library) over the revenue (+ quantity, if
+  present) columns, flagging `ANOMALY_CONTAMINATION_RATE` of rows with no
+  fixed numeric threshold. Uses a fixed-seed PRNG instead of `Math.random()`
+  so the same dataset always flags the same rows — otherwise this
+  genuinely-randomized algorithm couldn't meet a "same input → same output"
+  bar. Surfaced as a summary line, a per-row anomaly-score chart, and a
+  flagged-rows table.
+- Insights (all three tabs — Forecasting, Segmentation, Anomaly Detection)
+  load once per dataset and don't re-fetch on tab switches.
 - `login.html`, `index.html`, `upload.html`, `dashboard.html`, and
-  `insights.html` (Forecasting + Segmentation tabs) are fully functional;
-  the remaining 5 pages render the shared shell with an explicit empty state
-  describing which later milestone builds them out.
+  `insights.html` are all fully functional now; the remaining 5 pages render
+  the shared shell with an explicit empty state describing which later
+  milestone builds them out.
 
-Not yet built (Milestones 5c-10): anomaly detection, AI chat + chart
-grounding, reports & sharing, team invitations, and the eventual InsForge
-migration. Each is its own milestone with its own review checkpoint, per the
-master prompt's own working rule (§0.5/§19) — don't assume anything past
-Milestone 5b is implemented.
+Not yet built (Milestones 6-10): AI chat + chart grounding, reports &
+sharing, team invitations, and the eventual InsForge migration. Each is its
+own milestone with its own review checkpoint, per the master prompt's own
+working rule (§0.5/§19) — don't assume anything past Milestone 5c is
+implemented.
 
 ## Running it
 

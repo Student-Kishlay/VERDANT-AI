@@ -28,6 +28,7 @@ const app = createApp(db, {
     maxUploadFileSizeMb: Number(process.env.MAX_UPLOAD_FILE_SIZE_MB) || 25,
     maxUploadRowCount: Number(process.env.MAX_UPLOAD_ROW_COUNT) || 200000,
     allowedFileTypes: ['.csv', '.xlsx'],
+    anomalyContaminationRate: Number(process.env.ANOMALY_CONTAMINATION_RATE) || 0.05,
   },
 });
 

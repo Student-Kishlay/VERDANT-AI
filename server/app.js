@@ -14,6 +14,7 @@ import { parseSpreadsheet } from './pipeline/parse-spreadsheet.js';
 import { computeKpis } from './pipeline/compute-kpis.js';
 import { forecastRevenue } from './pipeline/forecast-revenue.js';
 import { segmentCustomers } from './pipeline/segment-customers.js';
+import { detectAnomalies } from './pipeline/detect-anomalies.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -22,6 +23,7 @@ const DEFAULT_CONFIG = {
   maxUploadFileSizeMb: 25,
   maxUploadRowCount: 200000,
   allowedFileTypes: ['.csv', '.xlsx'],
+  anomalyContaminationRate: 0.05,
 };
 
 // Shared error/success envelope, per Master Prompt §5.5:
@@ -389,6 +391,37 @@ export function createApp(db, { jwtSecret, storage, config } = {}) {
       db.setSegments(dataset.id, result.segments);
     }
     return ok(res, { segmentation: result });
+  });
+
+  // ── Insights: Anomaly Detection (Milestone 5c) ──────────────────────────
+
+  app.get('/api/datasets/:id/anomalies', requireAuth, (req, res) => {
+    const dataset = getAccessibleDataset(req);
+    if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
+    if (dataset.status !== 'ready') {
+      return fail(res, 409, 'NOT_READY', `Dataset is ${dataset.status}, not ready.`);
+    }
+
+    const columns = db.getColumnMaps(dataset.id).map(withEffectiveRole);
+    const rows = db.getAllDatasetRows(dataset.id);
+
+    const result = detectAnomalies(columns, rows, { contaminationRate: cfg.anomalyContaminationRate });
+    if (result.available) {
+      db.setAnomalies(dataset.id, result.flagged_rows);
+      // Enrich the response (not the persisted record) with the actual
+      // feature values for each flagged row, so the client can render a
+      // meaningful table/chart without a bulk row-fetch endpoint.
+      const featureRoles = ['revenue', 'quantity'];
+      const featureColumns = columns
+        .filter((c) => featureRoles.includes(c.effective_role))
+        .map((c) => c.column_name);
+      result.flagged_rows = result.flagged_rows.map((f) => ({
+        ...f,
+        values: Object.fromEntries(featureColumns.map((col) => [col, rows[f.row_index][col]])),
+      }));
+      result.total_rows = rows.length;
+    }
+    return ok(res, { anomalies: result });
   });
 
   return app;

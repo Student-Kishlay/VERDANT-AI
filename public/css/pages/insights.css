@@ -60,3 +60,11 @@
 .chart-card .chart-wrap {
   height: 360px;
 }
+
+.chart-card {
+  margin-bottom: 1.5rem;
+}
+
+#anomalies-summary {
+  margin: 0 0 1rem;
+}

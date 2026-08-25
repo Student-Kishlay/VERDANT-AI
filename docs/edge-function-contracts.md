@@ -229,3 +229,53 @@ classification — each call **replaces** the full set via
 `column_maps`, so a methodology change can never leave a mixed old/new set.
 
 **Error codes:** `NOT_FOUND`, `NOT_READY`.
+
+## `detect-anomalies`
+
+Implemented as `GET /api/datasets/:id/anomalies` (no request params — always
+recomputes over the full dataset, `ANOMALY_CONTAMINATION_RATE` from `.env`
+via `GET /api/config`).
+
+**Response (available):**
+
+```json
+{ "ok": true, "data": { "anomalies": {
+  "available": true,
+  "flagged_rows": [{
+    "row_index": 95, "anomaly_score": 0.7125,
+    "values": { "revenue": 3000, "quantity": 10 }
+  }],
+  "contamination_rate": 0.05,
+  "methodology_version": 1,
+  "total_rows": 100
+} } }
+```
+
+`values` and `total_rows` are added by the route (`server/app.js`) for the
+client's convenience — the pipeline module itself (and what gets persisted
+to the `anomalies` table) only carries `row_index`/`anomaly_score`, matching
+the target schema in `db/schema.sql`.
+
+**Response (missing required columns):** `{ "available": false, "missing": ["revenue"] }`
+— `revenue` is the only hard requirement; `quantity` is used as a second
+feature automatically if that role is present, per §10.
+
+**Methodology (§10), built from scratch (no ML library) — the determinism
+choice §10 doesn't address:** Isolation Forest is randomized by design
+(random feature, random split value, random subsampling per tree), but the
+acceptance bar demands the exact same rows flagged every run. Every random
+decision in `server/pipeline/detect-anomalies.js` goes through a **fixed-seed
+PRNG** (`mulberry32`) instead of `Math.random()` — still a genuine
+randomized-tree ensemble, but the same dataset always produces the same
+forest and the same flagged rows, consistent with the "same input → same
+output" principle carried from the cleaning pipeline (§5). Parameters match
+§10's explicit recommendation: 100 trees, subsample size `min(256, n)`,
+standard path-length scoring with the leaf-size correction term. No fixed
+numeric score threshold — the top `round(contamination_rate × n)` rows by
+score are flagged, whatever that dataset's actual score distribution is.
+
+**Recompute semantics:** replace-all via `server/db.js#setAnomalies`, same
+rationale as `segment-customers` — a current classification, not a
+historical log.
+
+**Error codes:** `NOT_FOUND`, `NOT_READY`.

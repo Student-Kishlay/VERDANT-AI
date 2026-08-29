@@ -145,6 +145,13 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
     return ok(res, { workspaces: db.getWorkspacesForUser(req.user.id) });
   });
 
+  app.get('/api/workspaces/:id/stats', requireAuth, (req, res) => {
+    if (!db.isMember(req.params.id, req.user.id)) {
+      return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
+    }
+    return ok(res, { stats: db.getWorkspaceStats(req.params.id) });
+  });
+
   app.post('/api/workspaces/:id/switch', requireAuth, (req, res) => {
     const workspace = db.getWorkspaceById(req.params.id);
     if (!workspace) return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');

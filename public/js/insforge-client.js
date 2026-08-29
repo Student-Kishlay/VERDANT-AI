@@ -90,6 +90,9 @@ export const insforge = {
     getMembers(workspaceId) {
       return request(`/api/workspaces/${workspaceId}/members`);
     },
+    getStats(workspaceId) {
+      return request(`/api/workspaces/${workspaceId}/stats`);
+    },
     invite(workspaceId, email) {
       return request(`/api/workspaces/${workspaceId}/invitations`, { method: 'POST', body: { email } });
     },

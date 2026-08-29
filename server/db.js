@@ -121,6 +121,25 @@ export function createDb(filePath) {
       return data.workspaces.find((w) => w.id === id) || null;
     },
 
+    // ── home page stats ──────────────────────────────────────────────────
+    // Aggregated across every dataset in the workspace — there's no single
+    // "active dataset" concept server-side (that's a browser-local pointer,
+    // see insforge-client.js), so these are workspace-wide totals.
+    getWorkspaceStats(workspaceId) {
+      const datasets = data.datasets.filter((d) => d.workspace_id === workspaceId);
+      const datasetIds = new Set(datasets.map((d) => d.id));
+      const lastDataset = datasets
+        .slice()
+        .sort((a, b) => (a.uploaded_at < b.uploaded_at ? 1 : -1))[0];
+
+      return {
+        last_dataset_name: lastDataset ? lastDataset.file_name : null,
+        total_records: datasets.reduce((sum, d) => sum + (d.row_count || 0), 0),
+        forecasts_generated: data.forecasts.filter((f) => datasetIds.has(f.dataset_id)).length,
+        chat_questions_asked: data.chat_messages.filter((m) => m.workspace_id === workspaceId && m.role === 'user').length,
+      };
+    },
+
     // ── datasets ──────────────────────────────────────────────────────────
     createDataset({ workspaceId, fileName, fileHash, storagePath, uploadedBy }) {
       const dataset = {

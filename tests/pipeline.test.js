@@ -164,8 +164,11 @@ const FORECAST_COLUMNS = [
 
 // A perfectly linear 7-day series (100, 200, ..., 700) has a least-squares
 // fit with zero residual: slope=100, intercept=100 (hand-verified). The
-// moving average over all 7 days (window = min(7,7)) is the mean, 400.
-// Forecast(x) = 0.6*(100+100x) + 0.4*400 for x=7,8,9 -> 640, 700, 760.
+// moving average over all 7 days (window = min(7,7)) is the mean, 400. The
+// two signals blend once into a level anchor at the last historical day
+// (x=6): 0.6*(100+100*6) + 0.4*400 = 420+160 = 580 — then each future day
+// extrapolates from that anchor at the full fitted slope (100/day):
+// 580+100k for k=1,2,3 -> 680, 780, 880.
 test('forecastRevenue matches a hand-computed linear-trend fit exactly', () => {
   const rows = [100, 200, 300, 400, 500, 600, 700].map((revenue, i) => ({
     order_date: `2024-03-0${i + 1}`,
@@ -177,7 +180,7 @@ test('forecastRevenue matches a hand-computed linear-trend fit exactly', () => {
   assert.equal(result.historical.length, 7);
   assert.deepEqual(
     result.series.map((p) => p.predicted_revenue),
-    [640, 700, 760]
+    [680, 780, 880]
   );
   assert.deepEqual(
     result.series.map((p) => p.date),
@@ -186,9 +189,10 @@ test('forecastRevenue matches a hand-computed linear-trend fit exactly', () => {
 });
 
 // A declining 5-day series (500,400,300,200,100): slope=-100, intercept=500,
-// moving average (window=5) = 300. Forecast(x)=0.6*(500-100x)+0.4*300 for
-// x=5..9 -> 120, 60, 0, -60->0, -120->0. This is what actually exercises the
-// "non-negative at every point" acceptance criterion.
+// moving average (window=5) = 300. Anchor at the last historical day (x=4):
+// 0.6*(500-100*4) + 0.4*300 = 60+120 = 180. Forecast(k) = 180-100k for
+// k=1..5 -> 80, -20->0, -120->0, -220->0, -320->0. This is what actually
+// exercises the "non-negative at every point" acceptance criterion.
 test('forecastRevenue floors negative projections at zero', () => {
   const rows = [500, 400, 300, 200, 100].map((revenue, i) => ({
     order_date: `2024-04-0${i + 1}`,
@@ -198,7 +202,7 @@ test('forecastRevenue floors negative projections at zero', () => {
 
   assert.deepEqual(
     result.series.map((p) => p.predicted_revenue),
-    [120, 60, 0, 0, 0]
+    [80, 0, 0, 0, 0]
   );
   assert.ok(result.series.every((p) => p.predicted_revenue >= 0));
 });
@@ -402,4 +406,20 @@ test('verifyChartGrounding: exactly 60% real labels passes ("fewer than 60%" is 
   const result = verifyChartGrounding(chartPayload, rows, { threshold: 0.6 });
   assert.equal(result.verified_ratio, 0.6);
   assert.equal(result.grounding_status, 'verified');
+});
+
+test('verifyChartGrounding: real labels with fabricated values are rejected', async () => {
+  const { rows } = await loadDashboardFixtureWithColumns();
+  const chartPayload = {
+    chart_type: 'bar',
+    label_column: 'category',
+    value_column: 'revenue',
+    // Real category names, but every value is invented (true sums are
+    // Electronics=1700, Apparel=1300, Grocery=2500 per the fixture).
+    labels: ['Electronics', 'Apparel', 'Grocery'],
+    values: [999999, 1, 2],
+  };
+  const result = verifyChartGrounding(chartPayload, rows, { threshold: 0.6 });
+  assert.equal(result.verified_ratio, 0);
+  assert.equal(result.grounding_status, 'rejected');
 });

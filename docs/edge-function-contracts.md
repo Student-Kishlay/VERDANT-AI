@@ -183,10 +183,16 @@ recursive part:** daily revenue is aggregated into a *dense* series — every
 calendar day from first to last sale, zero-filled for gap days, not just the
 days that had sales — then a degree-1 least-squares line is fit over that
 series. The moving-average term is the average of the last `min(7, H)`
-historical days, held **constant** across the whole forecast horizon (a flat
-anchor); the linear term is what actually extrapolates forward.
-`predicted_revenue = max(0, 0.6 × linear_trend + 0.4 × moving_average)` per
-future day. Every call to this endpoint **appends** a new row to the
+historical days. **(v2)** The two signals are blended once into a single
+level anchor at the last historical day —
+`anchor = 0.6 × linear_trend(last_day) + 0.4 × moving_average` — and every
+future day extrapolates from that anchor at the fitted slope:
+`predicted_revenue = max(0, anchor + slope × k)` for the k-th future day.
+(v1 held the moving-average term flat across the whole horizon and
+re-blended it into every future day, which diluted the fitted slope to 60%
+of its true value — worse at longer horizons. v2 keeps the same blend as a
+one-time smoothing of the *starting level* without damping the *growth
+rate*.) Every call to this endpoint **appends** a new row to the
 `forecasts` table (`server/db.js#createForecast`) rather than overwriting the
 previous one — per §9/§10's methodology-versioning intent, this table is an
 append-only log.

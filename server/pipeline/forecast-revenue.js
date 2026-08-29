@@ -1,7 +1,16 @@
 // Revenue Forecasting (Master Prompt §8). See docs/edge-function-contracts.md
 // for the concrete choice made where §8 underspecifies the moving-average
 // component for future (not-yet-happened) days.
-export const METHODOLOGY_VERSION = 1;
+//
+// v2: the moving-average term used to be held flat across the whole horizon,
+// which meant only 60% of the fitted slope ever reached the forecast — a
+// real trend was systematically undercounted, worse at longer horizons (up
+// to ~33% low at 90 days on a noiseless linear series). Now the 0.6/0.4
+// blend is resolved once at the last historical day (as a level anchor),
+// and every future day extrapolates from that anchor at the fitted slope —
+// so the growth rate is never diluted, only the starting level is smoothed
+// between the trend fit and the recent moving average.
+export const METHODOLOGY_VERSION = 2;
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -72,12 +81,18 @@ export function forecastRevenue(columns, rows, { horizonDays } = {}) {
   const window = Math.min(7, values.length);
   const movingAverage = values.slice(-window).reduce((s, v) => s + v, 0) / window;
 
+  // Blend the two signals once, at the last historical day, into a single
+  // starting level — then extrapolate every future day from that anchor at
+  // the fitted slope, so the blend smooths the *starting point* without
+  // damping the *growth rate*.
+  const lastIndex = dense.length - 1;
+  const linearAtLast = intercept + slope * lastIndex;
+  const anchor = 0.6 * linearAtLast + 0.4 * movingAverage;
+
   const lastDate = dense[dense.length - 1].date;
   const series = [];
   for (let k = 1; k <= horizonDays; k++) {
-    const x = dense.length - 1 + k;
-    const linearTrend = intercept + slope * x;
-    const predicted = Math.max(0, round2(0.6 * linearTrend + 0.4 * movingAverage));
+    const predicted = Math.max(0, round2(anchor + slope * k));
     series.push({ date: addDays(lastDate, k), predicted_revenue: predicted });
   }
 

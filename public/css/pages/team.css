@@ -6,6 +6,17 @@
   margin-top: 1.25rem;
 }
 
+.card h3 {
+  margin-bottom: 0.75rem;
+}
+
+/* upload.css's .section-hint (shared across pages) has a negative top
+   margin that assumes it sits right against a zero-margin h3 — cancel
+   that out here now that h3 has its own bottom margin above. */
+.card .section-hint {
+  margin-top: 0;
+}
+
 .invite-form {
   display: flex;
   gap: 0.6rem;

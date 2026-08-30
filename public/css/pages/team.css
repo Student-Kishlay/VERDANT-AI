@@ -1,3 +1,11 @@
+.page-content {
+  padding-top: 1.5rem;
+}
+
+.card + .card {
+  margin-top: 1.25rem;
+}
+
 .invite-form {
   display: flex;
   gap: 0.6rem;

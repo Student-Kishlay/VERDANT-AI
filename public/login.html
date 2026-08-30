@@ -26,7 +26,10 @@
         </div>
         <div class="field">
           <label for="password">Password</label>
-          <input id="password" name="password" type="password" autocomplete="current-password" required minlength="8" />
+          <div class="password-input">
+            <input id="password" name="password" type="password" autocomplete="current-password" required minlength="8" />
+            <button class="password-toggle" id="password-toggle" type="button" aria-label="Show password" aria-pressed="false">Show</button>
+          </div>
         </div>
         <p class="form-error" id="form-error" role="alert"></p>
         <button class="btn" type="submit" id="submit-btn">Sign in</button>

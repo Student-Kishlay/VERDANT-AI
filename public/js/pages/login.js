@@ -6,6 +6,16 @@ const displayNameField = document.getElementById('display-name-field');
 const submitBtn = document.getElementById('submit-btn');
 const titleEl = document.getElementById('form-title');
 const errorEl = document.getElementById('form-error');
+const passwordInput = document.getElementById('password');
+const passwordToggle = document.getElementById('password-toggle');
+
+passwordToggle.addEventListener('click', () => {
+  const isHidden = passwordInput.type === 'password';
+  passwordInput.type = isHidden ? 'text' : 'password';
+  passwordToggle.textContent = isHidden ? 'Hide' : 'Show';
+  passwordToggle.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+  passwordToggle.setAttribute('aria-pressed', String(isHidden));
+});
 
 let mode = 'signin'; // 'signin' | 'signup'
 

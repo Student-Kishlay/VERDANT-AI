@@ -3,11 +3,7 @@ import cors from 'cors';
 import multer from 'multer';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { createStorage } from './storage.js';
 import { cleanDataset, METHODOLOGY_VERSION as CLEAN_METHODOLOGY_VERSION } from './pipeline/clean-dataset.js';
 import { detectColumns } from './pipeline/detect-columns.js';
 import { parseSpreadsheet } from './pipeline/parse-spreadsheet.js';
@@ -31,6 +27,10 @@ const DEFAULT_CONFIG = {
   anomalyContaminationRate: 0.05,
   aiProvider: 'mock',
   groqApiKey: '',
+  // Public by design — an anon key is meant for client-side use (same as
+  // Supabase's), never a secret. The service-role key stays server-only.
+  insforgeBaseUrl: '',
+  insforgeAnonKey: '',
   groqModel: 'llama-3.3-70b-versatile',
   chartGroundingThreshold: 0.6,
   aiChatMaxMessagesPerWorkspacePerHour: 60,
@@ -48,10 +48,10 @@ function fail(res, status, code, message) {
   return res.status(status).json({ ok: false, error: { code, message } });
 }
 
-export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}) {
+export function createApp(db, { insforge, storage, reportStorage, config } = {}) {
   const cfg = { ...DEFAULT_CONFIG, ...config };
-  const store = storage || createStorage(path.join(os.tmpdir(), 'verdant-bi-uploads', crypto.randomUUID()));
-  const reportStore = reportStorage || createStorage(path.join(os.tmpdir(), 'verdant-bi-reports', crypto.randomUUID()));
+  const store = storage;
+  const reportStore = reportStorage;
   const chatRateLimiter = createRateLimiter();
 
   const app = express();
@@ -59,103 +59,91 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
   app.use(express.json());
   app.use(express.static(PUBLIC_DIR));
 
-  function issueToken(user) {
-    return jwt.sign({ sub: user.id }, jwtSecret, { expiresIn: '7d' });
+  // Every route here that talks to InsForge can now fail on a real network
+  // error, not just a bug — and Express 4 doesn't catch a rejected promise
+  // from an async handler, so an uncaught one becomes an unhandled
+  // rejection that crashes the whole process, taking down every other
+  // request in flight. Wrap route registration once here so every async
+  // handler's rejection is forwarded to the error middleware below instead.
+  for (const method of ['get', 'post', 'put', 'delete', 'patch']) {
+    const original = app[method].bind(app);
+    app[method] = (routePath, ...handlers) =>
+      original(
+        routePath,
+        ...handlers.map((fn) =>
+          fn.constructor.name === 'AsyncFunction' ? (req, res, next) => fn(req, res, next).catch(next) : fn
+        )
+      );
   }
 
-  // Resolves the JWT into req.user. Every route that touches workspace-scoped
-  // data requires this — there is no path to workspace data that skips it.
+  // Auth now happens entirely on InsForge (public/js/insforge-client.js
+  // calls insforge.auth.* directly) — this only verifies the InsForge
+  // access token the browser sends and reads its claims. There is no local
+  // signup/login route anymore, and no DB lookup here: sub/email come
+  // straight out of the verified JWT.
   function requireAuth(req, res, next) {
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
     if (!token) return fail(res, 401, 'UNAUTHENTICATED', 'Missing bearer token.');
     try {
-      const payload = jwt.verify(token, jwtSecret);
-      const user = db.getUserById(payload.sub);
-      if (!user) return fail(res, 401, 'UNAUTHENTICATED', 'User no longer exists.');
-      req.user = user;
+      const payload = insforge.verifyToken(token);
+      req.user = { id: payload.sub, email: payload.email };
       next();
     } catch {
       return fail(res, 401, 'UNAUTHENTICATED', 'Invalid or expired token.');
     }
   }
 
-  function publicUser(user) {
-    return { id: user.id, email: user.email, display_name: user.display_name };
+  function publicUser(user, displayName) {
+    return { id: user.id, email: user.email, display_name: displayName || user.email.split('@')[0] };
   }
 
-  app.post('/api/auth/signup', async (req, res) => {
-    const { email, password, display_name } = req.body || {};
-    if (!email || !password) {
-      return fail(res, 400, 'INVALID_INPUT', 'Email and password are required.');
-    }
-    if (password.length < 8) {
-      return fail(res, 400, 'WEAK_PASSWORD', 'Password must be at least 8 characters.');
-    }
-    if (db.findUserByEmail(email)) {
-      return fail(res, 409, 'EMAIL_TAKEN', 'An account with this email already exists.');
-    }
+  // Self-provisioning: the first time a signed-in user has zero workspaces
+  // (i.e. right after their first InsForge signup), give them a personal
+  // workspace and convert any pending invitations for their email into
+  // memberships — mirroring what the old mock did inline during signup,
+  // now done lazily since InsForge issues sessions, not this server.
+  app.get('/api/auth/me', requireAuth, async (req, res) => {
+    const profile = await db.getUserById(req.user.id);
+    const displayName = profile?.profile?.name || req.user.email.split('@')[0];
+    let workspaces = await db.getWorkspacesForUser(req.user.id);
 
-    const passwordHash = await bcrypt.hash(password, 10);
-    const user = db.createUser({ email, passwordHash, displayName: display_name });
+    if (workspaces.length === 0) {
+      const workspace = await db.createWorkspace({
+        name: `${displayName}'s Workspace`,
+        type: 'personal',
+        ownerId: req.user.id,
+      });
+      await db.addMember({ workspaceId: workspace.id, userId: req.user.id, role: 'owner' });
 
-    // Auto-provision a personal workspace on first signup (§12).
-    const workspace = db.createWorkspace({
-      name: `${user.display_name}'s Workspace`,
-      type: 'personal',
-      ownerId: user.id,
-    });
-    db.addMember({ workspaceId: workspace.id, userId: user.id, role: 'owner' });
+      for (const invitation of await db.findPendingInvitationsForEmail(req.user.email)) {
+        await db.addMember({ workspaceId: invitation.workspace_id, userId: req.user.id, role: 'member' });
+        await db.acceptInvitation(invitation.id);
+      }
 
-    // Any pending invitation for this exact email converts to membership on
-    // signup (§12) — the other half of the acceptance criterion alongside
-    // "inviting an existing user grants immediate access."
-    for (const invitation of db.findPendingInvitationsForEmail(email)) {
-      db.addMember({ workspaceId: invitation.workspace_id, userId: user.id, role: 'member' });
-      db.acceptInvitation(invitation.id);
+      workspaces = await db.getWorkspacesForUser(req.user.id);
     }
 
-    const token = issueToken(user);
-    return ok(res, { token, user: publicUser(user), workspace }, 201);
+    return ok(res, { user: publicUser(req.user, displayName), workspaces });
   });
 
-  app.post('/api/auth/login', async (req, res) => {
-    const { email, password } = req.body || {};
-    if (!email || !password) {
-      return fail(res, 400, 'INVALID_INPUT', 'Email and password are required.');
-    }
-    const user = db.findUserByEmail(email);
-    if (!user) return fail(res, 401, 'INVALID_CREDENTIALS', 'Incorrect email or password.');
-
-    const match = await bcrypt.compare(password, user.password_hash);
-    if (!match) return fail(res, 401, 'INVALID_CREDENTIALS', 'Incorrect email or password.');
-
-    const token = issueToken(user);
-    return ok(res, { token, user: publicUser(user) });
-  });
-
-  app.get('/api/auth/me', requireAuth, (req, res) => {
-    const workspaces = db.getWorkspacesForUser(req.user.id);
-    return ok(res, { user: publicUser(req.user), workspaces });
-  });
-
-  app.get('/api/workspaces', requireAuth, (req, res) => {
+  app.get('/api/workspaces', requireAuth, async (req, res) => {
     // Membership-filtered by construction — a user can never see a workspace
-    // they don't belong to, mirroring the RLS policy in db/schema.sql.
-    return ok(res, { workspaces: db.getWorkspacesForUser(req.user.id) });
+    // they don't belong to, mirroring the RLS policy in db/insforge-schema.sql.
+    return ok(res, { workspaces: await db.getWorkspacesForUser(req.user.id) });
   });
 
-  app.get('/api/workspaces/:id/stats', requireAuth, (req, res) => {
-    if (!db.isMember(req.params.id, req.user.id)) {
+  app.get('/api/workspaces/:id/stats', requireAuth, async (req, res) => {
+    if (!(await db.isMember(req.params.id, req.user.id))) {
       return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
     }
-    return ok(res, { stats: db.getWorkspaceStats(req.params.id) });
+    return ok(res, { stats: await db.getWorkspaceStats(req.params.id) });
   });
 
-  app.post('/api/workspaces/:id/switch', requireAuth, (req, res) => {
-    const workspace = db.getWorkspaceById(req.params.id);
+  app.post('/api/workspaces/:id/switch', requireAuth, async (req, res) => {
+    const workspace = await db.getWorkspaceById(req.params.id);
     if (!workspace) return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
-    if (!db.isMember(workspace.id, req.user.id)) {
+    if (!(await db.isMember(workspace.id, req.user.id))) {
       return fail(res, 403, 'FORBIDDEN', 'You are not a member of this workspace.');
     }
     return ok(res, { workspace });
@@ -166,53 +154,54 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
   // §12: "owners can manage membership, delete datasets, revoke share
   // links" — the actual authorization boundary, checked server-side, not
   // just hidden in the UI.
-  function requireOwner(workspaceId, userId) {
-    return db.getMemberRole(workspaceId, userId) === 'owner';
+  async function requireOwner(workspaceId, userId) {
+    return (await db.getMemberRole(workspaceId, userId)) === 'owner';
   }
 
-  app.post('/api/workspaces', requireAuth, (req, res) => {
+  app.post('/api/workspaces', requireAuth, async (req, res) => {
     const { name } = req.body || {};
     if (!name || !name.trim()) return fail(res, 400, 'INVALID_INPUT', 'A workspace name is required.');
 
-    const workspace = db.createWorkspace({ name: name.trim(), type: 'team', ownerId: req.user.id });
-    db.addMember({ workspaceId: workspace.id, userId: req.user.id, role: 'owner' });
+    const workspace = await db.createWorkspace({ name: name.trim(), type: 'team', ownerId: req.user.id });
+    await db.addMember({ workspaceId: workspace.id, userId: req.user.id, role: 'owner' });
     return ok(res, { workspace: { ...workspace, role: 'owner' } }, 201);
   });
 
-  app.get('/api/workspaces/:id/members', requireAuth, (req, res) => {
-    if (!db.isMember(req.params.id, req.user.id)) {
+  app.get('/api/workspaces/:id/members', requireAuth, async (req, res) => {
+    if (!(await db.isMember(req.params.id, req.user.id))) {
       return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
     }
-    const members = db.getMembers(req.params.id);
-    const pending = db
-      .listInvitations(req.params.id)
+    const members = await db.getMembers(req.params.id);
+    const invitations = await db.listInvitations(req.params.id);
+    const pending = invitations
       .filter((i) => i.status === 'pending')
       .map((i) => ({ invited_email: i.invited_email, status: 'pending', created_at: i.created_at }));
     return ok(res, { members, pending_invitations: pending });
   });
 
-  app.post('/api/workspaces/:id/invitations', requireAuth, (req, res) => {
+  app.post('/api/workspaces/:id/invitations', requireAuth, async (req, res) => {
     const workspaceId = req.params.id;
-    if (!db.isMember(workspaceId, req.user.id)) {
+    if (!(await db.isMember(workspaceId, req.user.id))) {
       return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
     }
-    if (!requireOwner(workspaceId, req.user.id)) {
+    if (!(await requireOwner(workspaceId, req.user.id))) {
       return fail(res, 403, 'FORBIDDEN', 'Only the workspace owner can invite members.');
     }
 
     const { email } = req.body || {};
     if (!email || !email.trim()) return fail(res, 400, 'INVALID_INPUT', 'An email address is required.');
 
-    const existingUser = db.findUserByEmail(email);
+    const existingUser = await db.findUserByEmail(email);
     if (existingUser) {
-      if (!db.isMember(workspaceId, existingUser.id)) {
-        db.addMember({ workspaceId, userId: existingUser.id, role: 'member' });
+      if (!(await db.isMember(workspaceId, existingUser.id))) {
+        await db.addMember({ workspaceId, userId: existingUser.id, role: 'member' });
       }
-      return ok(res, { status: 'joined', member: db.getMembers(workspaceId).find((m) => m.user_id === existingUser.id) }, 201);
+      const members = await db.getMembers(workspaceId);
+      return ok(res, { status: 'joined', member: members.find((m) => m.user_id === existingUser.id) }, 201);
     }
 
-    const existingInvitation = db.findPendingInvitation(workspaceId, email);
-    const invitation = existingInvitation || db.createInvitation({ workspaceId, invitedEmail: email, invitedBy: req.user.id });
+    const existingInvitation = await db.findPendingInvitation(workspaceId, email);
+    const invitation = existingInvitation || (await db.createInvitation({ workspaceId, invitedEmail: email, invitedBy: req.user.id }));
     return ok(res, { status: 'pending', invitation }, 201);
   });
 
@@ -232,7 +221,11 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
 
   // Deliberately omits storage_path/file_hash — internal to the mock backend,
   // not something the client needs or should see.
-  function datasetView(dataset) {
+  async function datasetView(dataset) {
+    const [columns, previewRows] = await Promise.all([
+      db.getColumnMaps(dataset.id),
+      db.getDatasetRowsPreview(dataset.id, 20),
+    ]);
     return {
       id: dataset.id,
       workspace_id: dataset.workspace_id,
@@ -244,17 +237,17 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
       cleaning_summary: dataset.cleaning_summary,
       methodology_version: dataset.methodology_version,
       uploaded_at: dataset.uploaded_at,
-      columns: db.getColumnMaps(dataset.id).map(withEffectiveRole),
-      preview_rows: db.getDatasetRowsPreview(dataset.id, 20),
+      columns: columns.map(withEffectiveRole),
+      preview_rows: previewRows,
     };
   }
 
   // A dataset lookup that isn't a member's own workspace responds 404, same
   // as "doesn't exist" — this avoids confirming another workspace's dataset
   // IDs even exist, consistent with the isolation boundary in §12/§14.
-  function getAccessibleDatasetById(datasetId, userId) {
-    const dataset = db.getDatasetById(datasetId);
-    if (!dataset || !db.isMember(dataset.workspace_id, userId)) return null;
+  async function getAccessibleDatasetById(datasetId, userId) {
+    const dataset = await db.getDatasetById(datasetId);
+    if (!dataset || !(await db.isMember(dataset.workspace_id, userId))) return null;
     return dataset;
   }
 
@@ -289,7 +282,7 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
   app.post('/api/datasets/upload', requireAuth, uploadMiddleware, async (req, res) => {
     const { workspace_id } = req.body || {};
     if (!workspace_id) return fail(res, 400, 'INVALID_INPUT', 'workspace_id is required.');
-    if (!db.isMember(workspace_id, req.user.id)) {
+    if (!(await db.isMember(workspace_id, req.user.id))) {
       return fail(res, 403, 'FORBIDDEN', 'You are not a member of this workspace.');
     }
     if (!req.file) return fail(res, 400, 'INVALID_INPUT', 'A file is required.');
@@ -314,9 +307,9 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
 
     // Idempotent re-upload (§5.1): same workspace + same content -> the
     // existing dataset, never a duplicate.
-    const existing = db.findDatasetByHash(workspace_id, fileHash);
+    const existing = await db.findDatasetByHash(workspace_id, fileHash);
     if (existing) {
-      return ok(res, { dataset: datasetView(existing), alreadyExists: true });
+      return ok(res, { dataset: await datasetView(existing), alreadyExists: true });
     }
 
     let parsed;
@@ -335,8 +328,8 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
       );
     }
 
-    const storagePath = store.saveUpload(buffer, { workspaceId: workspace_id, fileHash, fileName });
-    const dataset = db.createDataset({
+    const storagePath = await store.saveUpload(buffer, { workspaceId: workspace_id, fileHash, fileName });
+    const dataset = await db.createDataset({
       workspaceId: workspace_id,
       fileName,
       fileHash,
@@ -348,9 +341,9 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
       const { headers, rows, summary } = cleanDataset(parsed.headers, parsed.rows);
       const columns = detectColumns(headers, rows);
 
-      db.saveDatasetRows(dataset.id, rows);
-      db.setColumnMaps(dataset.id, columns);
-      db.updateDataset(dataset.id, {
+      await db.saveDatasetRows(dataset.id, rows);
+      await db.setColumnMaps(dataset.id, columns);
+      await db.updateDataset(dataset.id, {
         status: 'ready',
         row_count: summary.final_row_count,
         column_count: summary.final_column_count,
@@ -369,68 +362,69 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
           timestamp: new Date().toISOString(),
         })
       );
-      db.updateDataset(dataset.id, { status: 'failed', failure_reason: err.message });
+      await db.updateDataset(dataset.id, { status: 'failed', failure_reason: err.message });
     }
 
-    return ok(res, { dataset: datasetView(db.getDatasetById(dataset.id)) }, 201);
+    return ok(res, { dataset: await datasetView(await db.getDatasetById(dataset.id)) }, 201);
   });
 
-  app.get('/api/datasets', requireAuth, (req, res) => {
+  app.get('/api/datasets', requireAuth, async (req, res) => {
     const workspaceId = req.query.workspace_id;
     if (!workspaceId) return fail(res, 400, 'INVALID_INPUT', 'workspace_id is required.');
-    if (!db.isMember(workspaceId, req.user.id)) {
+    if (!(await db.isMember(workspaceId, req.user.id))) {
       return fail(res, 403, 'FORBIDDEN', 'You are not a member of this workspace.');
     }
-    return ok(res, { datasets: db.listDatasetsForWorkspace(workspaceId).map(datasetView) });
+    const datasets = await db.listDatasetsForWorkspace(workspaceId);
+    return ok(res, { datasets: await Promise.all(datasets.map(datasetView)) });
   });
 
-  app.get('/api/datasets/:id', requireAuth, (req, res) => {
-    const dataset = getAccessibleDataset(req);
+  app.get('/api/datasets/:id', requireAuth, async (req, res) => {
+    const dataset = await getAccessibleDataset(req);
     if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
-    return ok(res, { dataset: datasetView(dataset) });
+    return ok(res, { dataset: await datasetView(dataset) });
   });
 
-  app.get('/api/datasets/:id/columns', requireAuth, (req, res) => {
-    const dataset = getAccessibleDataset(req);
+  app.get('/api/datasets/:id/columns', requireAuth, async (req, res) => {
+    const dataset = await getAccessibleDataset(req);
     if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
-    return ok(res, { columns: db.getColumnMaps(dataset.id).map(withEffectiveRole) });
+    return ok(res, { columns: (await db.getColumnMaps(dataset.id)).map(withEffectiveRole) });
   });
 
-  app.post('/api/datasets/:id/columns/:column_name/override', requireAuth, (req, res) => {
-    const dataset = getAccessibleDataset(req);
+  app.post('/api/datasets/:id/columns/:column_name/override', requireAuth, async (req, res) => {
+    const dataset = await getAccessibleDataset(req);
     if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
 
     const { role } = req.body || {};
     if (role !== null && role !== undefined && !ALLOWED_ROLES.includes(role)) {
       return fail(res, 400, 'INVALID_INPUT', `role must be one of: ${ALLOWED_ROLES.join(', ')}, or null to clear.`);
     }
-    const updated = db.setColumnOverride(dataset.id, req.params.column_name, role ?? null);
+    const updated = await db.setColumnOverride(dataset.id, req.params.column_name, role ?? null);
     if (!updated) return fail(res, 404, 'NOT_FOUND', 'Column not found on this dataset.');
     return ok(res, { column: withEffectiveRole(updated) });
   });
 
-  app.delete('/api/datasets/:id', requireAuth, (req, res) => {
-    const dataset = getAccessibleDataset(req);
+  app.delete('/api/datasets/:id', requireAuth, async (req, res) => {
+    const dataset = await getAccessibleDataset(req);
     if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
-    if (!requireOwner(dataset.workspace_id, req.user.id)) {
+    if (!(await requireOwner(dataset.workspace_id, req.user.id))) {
       return fail(res, 403, 'FORBIDDEN', 'Only the workspace owner can delete datasets.');
     }
-    store.deleteUpload(dataset.storage_path);
-    db.deleteDataset(dataset.id);
+    await store.deleteUpload(dataset.storage_path);
+    await db.deleteDataset(dataset.id);
     return ok(res, { deleted: true });
   });
 
   // ── KPI Dashboard (Milestone 4) ──────────────────────────────────────────
 
-  app.get('/api/datasets/:id/kpis', requireAuth, (req, res) => {
-    const dataset = getAccessibleDataset(req);
+  app.get('/api/datasets/:id/kpis', requireAuth, async (req, res) => {
+    const dataset = await getAccessibleDataset(req);
     if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
     if (dataset.status !== 'ready') {
       return fail(res, 409, 'NOT_READY', `Dataset is ${dataset.status}, not ready.`);
     }
 
-    const columns = db.getColumnMaps(dataset.id).map(withEffectiveRole);
-    const rows = db.getAllDatasetRows(dataset.id);
+    const columns = (await db.getColumnMaps(dataset.id)).map(withEffectiveRole);
+    const rows = await db.getAllDatasetRows(dataset.id);
     const { start_date, end_date, region } = req.query;
 
     const kpis = computeKpis(columns, rows, { startDate: start_date, endDate: end_date, region });
@@ -441,8 +435,8 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
 
   const ALLOWED_HORIZONS = [7, 30, 90];
 
-  app.get('/api/datasets/:id/forecast', requireAuth, (req, res) => {
-    const dataset = getAccessibleDataset(req);
+  app.get('/api/datasets/:id/forecast', requireAuth, async (req, res) => {
+    const dataset = await getAccessibleDataset(req);
     if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
     if (dataset.status !== 'ready') {
       return fail(res, 409, 'NOT_READY', `Dataset is ${dataset.status}, not ready.`);
@@ -453,12 +447,12 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
       return fail(res, 400, 'INVALID_INPUT', `horizon_days must be one of: ${ALLOWED_HORIZONS.join(', ')}.`);
     }
 
-    const columns = db.getColumnMaps(dataset.id).map(withEffectiveRole);
-    const rows = db.getAllDatasetRows(dataset.id);
+    const columns = (await db.getColumnMaps(dataset.id)).map(withEffectiveRole);
+    const rows = await db.getAllDatasetRows(dataset.id);
 
     const result = forecastRevenue(columns, rows, { horizonDays });
     if (result.available) {
-      db.createForecast({
+      await db.createForecast({
         datasetId: dataset.id,
         horizonDays,
         series: result.series,
@@ -470,38 +464,38 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
 
   // ── Insights: Customer Segmentation / RFM (Milestone 5b) ────────────────
 
-  app.get('/api/datasets/:id/segments', requireAuth, (req, res) => {
-    const dataset = getAccessibleDataset(req);
+  app.get('/api/datasets/:id/segments', requireAuth, async (req, res) => {
+    const dataset = await getAccessibleDataset(req);
     if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
     if (dataset.status !== 'ready') {
       return fail(res, 409, 'NOT_READY', `Dataset is ${dataset.status}, not ready.`);
     }
 
-    const columns = db.getColumnMaps(dataset.id).map(withEffectiveRole);
-    const rows = db.getAllDatasetRows(dataset.id);
+    const columns = (await db.getColumnMaps(dataset.id)).map(withEffectiveRole);
+    const rows = await db.getAllDatasetRows(dataset.id);
 
     const result = segmentCustomers(columns, rows);
     if (result.available) {
-      db.setSegments(dataset.id, result.segments);
+      await db.setSegments(dataset.id, result.segments, result.methodology_version);
     }
     return ok(res, { segmentation: result });
   });
 
   // ── Insights: Anomaly Detection (Milestone 5c) ──────────────────────────
 
-  app.get('/api/datasets/:id/anomalies', requireAuth, (req, res) => {
-    const dataset = getAccessibleDataset(req);
+  app.get('/api/datasets/:id/anomalies', requireAuth, async (req, res) => {
+    const dataset = await getAccessibleDataset(req);
     if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
     if (dataset.status !== 'ready') {
       return fail(res, 409, 'NOT_READY', `Dataset is ${dataset.status}, not ready.`);
     }
 
-    const columns = db.getColumnMaps(dataset.id).map(withEffectiveRole);
-    const rows = db.getAllDatasetRows(dataset.id);
+    const columns = (await db.getColumnMaps(dataset.id)).map(withEffectiveRole);
+    const rows = await db.getAllDatasetRows(dataset.id);
 
     const result = detectAnomalies(columns, rows, { contaminationRate: cfg.anomalyContaminationRate });
     if (result.available) {
-      db.setAnomalies(dataset.id, result.flagged_rows);
+      await db.setAnomalies(dataset.id, result.flagged_rows, result.methodology_version);
       // Enrich the response (not the persisted record) with the actual
       // feature values for each flagged row, so the client can render a
       // meaningful table/chart without a bulk row-fetch endpoint.
@@ -531,19 +525,20 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
     };
   }
 
-  app.get('/api/chat', requireAuth, (req, res) => {
+  app.get('/api/chat', requireAuth, async (req, res) => {
     const { workspace_id: workspaceId, dataset_id: datasetId } = req.query;
     if (!workspaceId || !datasetId) {
       return fail(res, 400, 'INVALID_INPUT', 'workspace_id and dataset_id are required.');
     }
-    if (!db.isMember(workspaceId, req.user.id)) {
+    if (!(await db.isMember(workspaceId, req.user.id))) {
       return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
     }
-    const dataset = getAccessibleDatasetById(datasetId, req.user.id);
+    const dataset = await getAccessibleDatasetById(datasetId, req.user.id);
     if (!dataset || dataset.workspace_id !== workspaceId) {
       return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
     }
-    return ok(res, { messages: db.listChatMessages(workspaceId, datasetId).map(publicChatMessage) });
+    const messages = await db.listChatMessages(workspaceId, datasetId);
+    return ok(res, { messages: messages.map(publicChatMessage) });
   });
 
   app.post('/api/chat', requireAuth, async (req, res) => {
@@ -551,10 +546,10 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
     if (!workspaceId || !datasetId || !message || !message.trim()) {
       return fail(res, 400, 'INVALID_INPUT', 'workspace_id, dataset_id, and a non-empty message are required.');
     }
-    if (!db.isMember(workspaceId, req.user.id)) {
+    if (!(await db.isMember(workspaceId, req.user.id))) {
       return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
     }
-    const dataset = getAccessibleDatasetById(datasetId, req.user.id);
+    const dataset = await getAccessibleDatasetById(datasetId, req.user.id);
     if (!dataset || dataset.workspace_id !== workspaceId) {
       return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
     }
@@ -567,13 +562,13 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
       return fail(res, 429, 'RATE_LIMITED', "You've reached the chat limit for this hour — try again shortly.");
     }
 
-    const columns = db.getColumnMaps(dataset.id).map(withEffectiveRole);
-    const rows = db.getAllDatasetRows(dataset.id);
+    const columns = (await db.getColumnMaps(dataset.id)).map(withEffectiveRole);
+    const rows = await db.getAllDatasetRows(dataset.id);
     const contextSummary = buildContextSummary(columns, rows, { maxContextTokens: cfg.aiChatMaxContextTokens });
     const segmentSummary = segmentCustomers(columns, rows).summary_by_label ?? null;
-    const conversationHistory = db.listChatMessages(workspaceId, datasetId, 10).map(publicChatMessage);
+    const conversationHistory = (await db.listChatMessages(workspaceId, datasetId, 10)).map(publicChatMessage);
 
-    db.addChatMessage({ workspaceId, datasetId, userId: req.user.id, role: 'user', content: message });
+    await db.addChatMessage({ workspaceId, datasetId, userId: req.user.id, role: 'user', content: message });
 
     const provider = getProvider(cfg);
     let providerResult;
@@ -618,7 +613,7 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
         ? `${providerResult.reply}\n\nI couldn't confirm this chart against your data, so I'm not showing it.`
         : providerResult.reply;
 
-    const assistantMessage = db.addChatMessage({
+    const assistantMessage = await db.addChatMessage({
       workspaceId,
       datasetId,
       userId: req.user.id,
@@ -668,7 +663,7 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
   // (§2) is the only table that stores a generated file's storage_path,
   // there's no separate "reports" table, so generating IS issuing.
   app.post('/api/datasets/:id/reports', requireAuth, async (req, res) => {
-    const dataset = getAccessibleDataset(req);
+    const dataset = await getAccessibleDataset(req);
     if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
     if (dataset.status !== 'ready') {
       return fail(res, 409, 'NOT_READY', `Dataset is ${dataset.status}, not ready.`);
@@ -679,8 +674,8 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
       return fail(res, 400, 'INVALID_INPUT', `report_type must be one of: ${REPORT_TYPES.join(', ')}.`);
     }
 
-    const columns = db.getColumnMaps(dataset.id).map(withEffectiveRole);
-    const rows = db.getAllDatasetRows(dataset.id);
+    const columns = (await db.getColumnMaps(dataset.id)).map(withEffectiveRole);
+    const rows = await db.getAllDatasetRows(dataset.id);
 
     let file;
     try {
@@ -699,13 +694,13 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
     }
 
     const reportId = crypto.randomUUID();
-    const storagePath = reportStore.saveReport(file.buffer, {
+    const storagePath = await reportStore.saveReport(file.buffer, {
       workspaceId: dataset.workspace_id,
       reportId,
       extension: file.extension,
     });
 
-    const share = db.createReportShare({
+    const share = await db.createReportShare({
       workspaceId: dataset.workspace_id,
       datasetId: dataset.id,
       reportType,
@@ -718,61 +713,73 @@ export function createApp(db, { jwtSecret, storage, reportStorage, config } = {}
     return ok(res, { share: publicShare(share) }, 201);
   });
 
-  app.get('/api/datasets/:id/reports', requireAuth, (req, res) => {
-    const dataset = getAccessibleDataset(req);
+  app.get('/api/datasets/:id/reports', requireAuth, async (req, res) => {
+    const dataset = await getAccessibleDataset(req);
     if (!dataset) return fail(res, 404, 'NOT_FOUND', 'Dataset not found.');
-    const shares = db.listSharesForWorkspace(dataset.workspace_id).filter((s) => s.dataset_id === dataset.id);
+    const shares = (await db.listSharesForWorkspace(dataset.workspace_id)).filter((s) => s.dataset_id === dataset.id);
     return ok(res, { shares: shares.map(publicShare) });
   });
 
-  app.get('/api/workspaces/:id/shares', requireAuth, (req, res) => {
-    if (!db.isMember(req.params.id, req.user.id)) {
+  app.get('/api/workspaces/:id/shares', requireAuth, async (req, res) => {
+    if (!(await db.isMember(req.params.id, req.user.id))) {
       return fail(res, 404, 'NOT_FOUND', 'Workspace not found.');
     }
-    return ok(res, { shares: db.listSharesForWorkspace(req.params.id).map(publicShare) });
+    const shares = await db.listSharesForWorkspace(req.params.id);
+    return ok(res, { shares: shares.map(publicShare) });
   });
 
-  function getAccessibleShare(req) {
-    const share = db.getShareById(req.params.id);
-    if (!share || !db.isMember(share.workspace_id, req.user.id)) return null;
+  async function getAccessibleShare(req) {
+    const share = await db.getShareById(req.params.id);
+    if (!share || !(await db.isMember(share.workspace_id, req.user.id))) return null;
     return share;
   }
 
-  app.post('/api/shares/:id/refresh', requireAuth, (req, res) => {
-    const share = getAccessibleShare(req);
+  app.post('/api/shares/:id/refresh', requireAuth, async (req, res) => {
+    const share = await getAccessibleShare(req);
     if (!share) return fail(res, 404, 'NOT_FOUND', 'Share not found.');
-    if (!requireOwner(share.workspace_id, req.user.id)) {
+    if (!(await requireOwner(share.workspace_id, req.user.id))) {
       return fail(res, 403, 'FORBIDDEN', 'Only the workspace owner can manage share links.');
     }
-    const updated = db.refreshShare(share.id, { token: crypto.randomUUID(), expiresAt: newExpiry() });
+    const updated = await db.refreshShare(share.id, { token: crypto.randomUUID(), expiresAt: newExpiry() });
     return ok(res, { share: publicShare(updated) });
   });
 
-  app.post('/api/shares/:id/revoke', requireAuth, (req, res) => {
-    const share = getAccessibleShare(req);
+  app.post('/api/shares/:id/revoke', requireAuth, async (req, res) => {
+    const share = await getAccessibleShare(req);
     if (!share) return fail(res, 404, 'NOT_FOUND', 'Share not found.');
-    if (!requireOwner(share.workspace_id, req.user.id)) {
+    if (!(await requireOwner(share.workspace_id, req.user.id))) {
       return fail(res, 403, 'FORBIDDEN', 'Only the workspace owner can manage share links.');
     }
-    const updated = db.revokeShare(share.id);
+    const updated = await db.revokeShare(share.id);
     return ok(res, { share: publicShare(updated) });
   });
 
   // Unauthenticated — the one and only file-serving path. Never resolves or
   // exposes the raw storage_path; the token is checked server-side and the
   // file streamed directly.
-  app.get('/public/shares/:token', (req, res) => {
-    const share = db.getShareByToken(req.params.token);
+  app.get('/public/shares/:token', async (req, res) => {
+    const share = await db.getShareByToken(req.params.token);
     if (!share) return fail(res, 404, 'NOT_FOUND', 'This link is not valid.');
     if (share.revoked) return fail(res, 403, 'REVOKED', 'This link has been revoked.');
     if (new Date(share.expires_at) < new Date()) return fail(res, 403, 'EXPIRED', 'This link has expired.');
 
-    const buffer = reportStore.readReport(share.storage_path);
+    const buffer = await reportStore.readReport(share.storage_path);
     const extension = path.extname(share.storage_path);
     const mimeType = extension === '.xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf';
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Content-Disposition', `attachment; filename="${share.report_type}${extension}"`);
     return res.send(buffer);
+  });
+
+  // Catches whatever the async-handler wrapper above forwards via next(err)
+  // — an InsForge request failing, a bug, anything — and turns it into a
+  // normal error response instead of an unhandled rejection.
+  app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    console.error(
+      JSON.stringify({ function: 'unhandled-error', path: req.path, error_message: err.message, timestamp: new Date().toISOString() })
+    );
+    return fail(res, 500, 'INTERNAL_ERROR', 'Something went wrong. Please try again.');
   });
 
   return app;

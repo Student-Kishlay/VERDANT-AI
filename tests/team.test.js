@@ -47,9 +47,9 @@ async function uploadFixture(base, token, workspaceId, fileName) {
 }
 
 test('creating a team workspace makes the creator its owner', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token } = await signupAndGetSession(base, 'team-creator@example.com');
+    const { token } = await signupAndGetSession(base, 'team-creator@example.com', { insforge });
     const workspace = await createTeamWorkspace(base, token, 'Acme Corp');
     assert.equal(workspace.type, 'team');
     assert.equal(workspace.role, 'owner');
@@ -59,10 +59,10 @@ test('creating a team workspace makes the creator its owner', async () => {
 });
 
 test('inviting an already-registered email grants immediate membership', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const owner = await signupAndGetSession(base, 'team-owner1@example.com');
-    const existingUser = await signupAndGetSession(base, 'team-existing@example.com');
+    const owner = await signupAndGetSession(base, 'team-owner1@example.com', { insforge });
+    const existingUser = await signupAndGetSession(base, 'team-existing@example.com', { insforge });
     const workspace = await createTeamWorkspace(base, owner.token, 'Acme Corp');
 
     const { status, body } = await invite(base, owner.token, workspace.id, 'team-existing@example.com');
@@ -84,9 +84,9 @@ test('inviting an already-registered email grants immediate membership', async (
 });
 
 test('inviting a non-registered email creates a pending invitation that converts to membership on signup', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const owner = await signupAndGetSession(base, 'team-owner2@example.com');
+    const owner = await signupAndGetSession(base, 'team-owner2@example.com', { insforge });
     const workspace = await createTeamWorkspace(base, owner.token, 'Acme Corp');
 
     const { status, body } = await invite(base, owner.token, workspace.id, 'future-member@example.com');
@@ -98,7 +98,7 @@ test('inviting a non-registered email creates a pending invitation that converts
     assert.equal(membersBefore.data.members.length, 1); // just the owner so far
 
     // Now the invited email signs up.
-    const newUser = await signupAndGetSession(base, 'future-member@example.com');
+    const newUser = await signupAndGetSession(base, 'future-member@example.com', { insforge });
     const meRes = await fetch(`${base}/api/auth/me`, { headers: { Authorization: `Bearer ${newUser.token}` } });
     const meBody = await meRes.json();
     const membership = meBody.data.workspaces.find((w) => w.id === workspace.id);
@@ -114,10 +114,10 @@ test('inviting a non-registered email creates a pending invitation that converts
 });
 
 test('a non-owner member cannot invite others', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const owner = await signupAndGetSession(base, 'team-owner3@example.com');
-    const member = await signupAndGetSession(base, 'team-member3@example.com');
+    const owner = await signupAndGetSession(base, 'team-owner3@example.com', { insforge });
+    const member = await signupAndGetSession(base, 'team-member3@example.com', { insforge });
     const workspace = await createTeamWorkspace(base, owner.token, 'Acme Corp');
     await invite(base, owner.token, workspace.id, 'team-member3@example.com');
 
@@ -130,10 +130,10 @@ test('a non-owner member cannot invite others', async () => {
 });
 
 test('a non-owner member cannot delete a dataset in that workspace', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const owner = await signupAndGetSession(base, 'team-owner4@example.com');
-    const member = await signupAndGetSession(base, 'team-member4@example.com');
+    const owner = await signupAndGetSession(base, 'team-owner4@example.com', { insforge });
+    const member = await signupAndGetSession(base, 'team-member4@example.com', { insforge });
     const workspace = await createTeamWorkspace(base, owner.token, 'Acme Corp');
     await invite(base, owner.token, workspace.id, 'team-member4@example.com');
     const dataset = await uploadFixture(base, owner.token, workspace.id, 'dashboard-sales.csv');
@@ -151,10 +151,10 @@ test('a non-owner member cannot delete a dataset in that workspace', async () =>
 });
 
 test('a non-owner member cannot revoke or refresh a share in that workspace', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const owner = await signupAndGetSession(base, 'team-owner5@example.com');
-    const member = await signupAndGetSession(base, 'team-member5@example.com');
+    const owner = await signupAndGetSession(base, 'team-owner5@example.com', { insforge });
+    const member = await signupAndGetSession(base, 'team-member5@example.com', { insforge });
     const workspace = await createTeamWorkspace(base, owner.token, 'Acme Corp');
     await invite(base, owner.token, workspace.id, 'team-member5@example.com');
     const dataset = await uploadFixture(base, owner.token, workspace.id, 'dashboard-sales.csv');
@@ -183,14 +183,14 @@ test('a non-owner member cannot revoke or refresh a share in that workspace', as
 });
 
 test('a member of workspace A querying workspace B dataset directly gets zero rows', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const ownerA = await signupAndGetSession(base, 'team-ownerA@example.com');
-    const memberA = await signupAndGetSession(base, 'team-memberA@example.com');
+    const ownerA = await signupAndGetSession(base, 'team-ownerA@example.com', { insforge });
+    const memberA = await signupAndGetSession(base, 'team-memberA@example.com', { insforge });
     const workspaceA = await createTeamWorkspace(base, ownerA.token, 'Team A');
     await invite(base, ownerA.token, workspaceA.id, 'team-memberA@example.com');
 
-    const ownerB = await signupAndGetSession(base, 'team-ownerB@example.com');
+    const ownerB = await signupAndGetSession(base, 'team-ownerB@example.com', { insforge });
     const workspaceB = await createTeamWorkspace(base, ownerB.token, 'Team B');
     const datasetB = await uploadFixture(base, ownerB.token, workspaceB.id, 'dashboard-sales.csv');
 
@@ -204,9 +204,9 @@ test('a member of workspace A querying workspace B dataset directly gets zero ro
 });
 
 test('inviting the same unregistered email twice does not create duplicate invitations', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const owner = await signupAndGetSession(base, 'team-owner6@example.com');
+    const owner = await signupAndGetSession(base, 'team-owner6@example.com', { insforge });
     const workspace = await createTeamWorkspace(base, owner.token, 'Acme Corp');
 
     await invite(base, owner.token, workspace.id, 'dupe@example.com');

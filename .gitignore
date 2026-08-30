@@ -4,3 +4,18 @@ server/data/db.json
 server/data/uploads/
 server/data/reports/
 *.log
+
+# InsForge & AI agent skills
+.insforge
+.agent
+.agents
+.augment
+.claude
+.cline
+.github/copilot*
+.kilocode
+.qoder
+.qwen
+.roo
+.trae
+.windsurf

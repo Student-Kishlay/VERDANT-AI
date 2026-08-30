@@ -38,9 +38,9 @@ async function getHistory(base, token, workspaceId, datasetId) {
 }
 
 test('a grounded revenue question returns the exact correct number', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'chat-revenue@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'chat-revenue@example.com', { insforge });
     const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
 
     const { status, body } = await sendChat(base, token, workspace.id, dataset.id, 'What is the total revenue?');
@@ -53,9 +53,9 @@ test('a grounded revenue question returns the exact correct number', async () =>
 });
 
 test('a category-breakdown question returns a verified chart matching real categories', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'chat-category@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'chat-category@example.com', { insforge });
     const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
 
     const { body } = await sendChat(base, token, workspace.id, dataset.id, 'Show me revenue by category');
@@ -71,9 +71,9 @@ test('a category-breakdown question returns a verified chart matching real categ
 });
 
 test('conversation history persists and is retrievable in order', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'chat-history@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'chat-history@example.com', { insforge });
     const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
 
     await sendChat(base, token, workspace.id, dataset.id, 'hello');
@@ -90,9 +90,9 @@ test('conversation history persists and is retrievable in order', async () => {
 });
 
 test('a message beyond the per-hour limit is rejected with a clear error', async () => {
-  const { server, base } = await startServer({ aiChatMaxMessagesPerWorkspacePerHour: 2 });
+  const { server, base, insforge } = await startServer({ aiChatMaxMessagesPerWorkspacePerHour: 2 });
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'chat-ratelimit@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'chat-ratelimit@example.com', { insforge });
     const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
 
     await sendChat(base, token, workspace.id, dataset.id, 'hello');
@@ -108,9 +108,9 @@ test('a message beyond the per-hour limit is rejected with a clear error', async
 });
 
 test('an unmatched question gives an honest fallback rather than a guess', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'chat-fallback@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'chat-fallback@example.com', { insforge });
     const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
 
     const { body } = await sendChat(base, token, workspace.id, dataset.id, 'what is the meaning of life');
@@ -121,10 +121,10 @@ test('an unmatched question gives an honest fallback rather than a guess', async
 });
 
 test('a user outside the workspace cannot read or post to its chat', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const owner = await signupAndGetSession(base, 'chat-owner@example.com');
-    const outsider = await signupAndGetSession(base, 'chat-outsider@example.com');
+    const owner = await signupAndGetSession(base, 'chat-owner@example.com', { insforge });
+    const outsider = await signupAndGetSession(base, 'chat-outsider@example.com', { insforge });
     const dataset = await uploadFixture(base, owner.token, owner.workspace.id, 'dashboard-sales.csv');
 
     const historyRes = await getHistory(base, outsider.token, owner.workspace.id, dataset.id);
@@ -138,9 +138,9 @@ test('a user outside the workspace cannot read or post to its chat', async () =>
 });
 
 test('a chat message containing an XSS payload is stored as-is (sanitization is a render-time concern)', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'chat-xss@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'chat-xss@example.com', { insforge });
     const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
 
     const payload = '<img src=x onerror=alert(1)>';
@@ -154,7 +154,7 @@ test('a chat message containing an XSS payload is stored as-is (sanitization is 
 });
 
 test('GET /api/config never exposes the Groq API key', async () => {
-  const { server, base } = await startServer({ groqApiKey: 'super-secret-value-should-not-leak' });
+  const { server, base, insforge } = await startServer({ groqApiKey: 'super-secret-value-should-not-leak' });
   try {
     const res = await fetch(`${base}/api/config`);
     const body = await res.json();

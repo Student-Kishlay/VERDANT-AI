@@ -29,9 +29,9 @@ async function getKpis(base, token, datasetId, query = '') {
 }
 
 test('GET .../kpis returns the exact hand-computed unfiltered totals', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'dash-owner@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'dash-owner@example.com', { insforge });
     const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
 
     const { status, body } = await getKpis(base, token, dataset.id);
@@ -46,9 +46,9 @@ test('GET .../kpis returns the exact hand-computed unfiltered totals', async () 
 });
 
 test('a date-range query param changes the response', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'dash-filter@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'dash-filter@example.com', { insforge });
     const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
 
     const filtered = await getKpis(base, token, dataset.id, '?start_date=2024-02-03&end_date=2024-02-06');
@@ -64,9 +64,9 @@ test('a date-range query param changes the response', async () => {
 });
 
 test('a region query param changes the response', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'dash-region@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'dash-region@example.com', { insforge });
     const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
 
     const { body } = await getKpis(base, token, dataset.id, '?region=North');
@@ -78,10 +78,10 @@ test('a region query param changes the response', async () => {
 });
 
 test('a user outside the workspace cannot read its KPIs', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const owner = await signupAndGetSession(base, 'dash-owner2@example.com');
-    const outsider = await signupAndGetSession(base, 'dash-outsider@example.com');
+    const owner = await signupAndGetSession(base, 'dash-owner2@example.com', { insforge });
+    const outsider = await signupAndGetSession(base, 'dash-outsider@example.com', { insforge });
     const dataset = await uploadFixture(base, owner.token, owner.workspace.id, 'dashboard-sales.csv');
 
     const { status } = await getKpis(base, outsider.token, dataset.id);
@@ -92,9 +92,9 @@ test('a user outside the workspace cannot read its KPIs', async () => {
 });
 
 test('KPIs for a dataset lacking a date/revenue column report what is missing', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'dash-missing@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'dash-missing@example.com', { insforge });
     const blob = new Blob(['notes,color\nfine,blue\nlate,red\n'], { type: 'text/csv' });
     const form = new FormData();
     form.append('workspace_id', workspace.id);

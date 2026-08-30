@@ -39,9 +39,9 @@ const MAGIC_BYTES = {
 
 for (const reportType of Object.keys(MAGIC_BYTES)) {
   test(`generating a "${reportType}" report produces a valid, uncorrupted file`, async () => {
-    const { server, base } = await startServer();
+    const { server, base, insforge } = await startServer();
     try {
-      const { token, workspace } = await signupAndGetSession(base, `report-${reportType}@example.com`);
+      const { token, workspace } = await signupAndGetSession(base, `report-${reportType}@example.com`, { insforge });
       const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
 
       const { status, body } = await generateReport(base, token, dataset.id, reportType);
@@ -62,9 +62,9 @@ for (const reportType of Object.keys(MAGIC_BYTES)) {
 }
 
 test('an unsupported report_type is rejected', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'report-badtype@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'report-badtype@example.com', { insforge });
     const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
     const { status, body } = await generateReport(base, token, dataset.id, 'not_a_real_type');
     assert.equal(status, 400);
@@ -75,9 +75,9 @@ test('an unsupported report_type is rejected', async () => {
 });
 
 test('revoking a share makes the next fetch of that link 403 REVOKED', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'report-revoke@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'report-revoke@example.com', { insforge });
     const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
     const { body } = await generateReport(base, token, dataset.id, 'analytics_summary');
     const share = body.data.share;
@@ -101,9 +101,9 @@ test('revoking a share makes the next fetch of that link 403 REVOKED', async () 
 });
 
 test('an expired share is 403 EXPIRED on next access', async () => {
-  const { server, base, db } = await startServer();
+  const { server, base, db, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'report-expire@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'report-expire@example.com', { insforge });
     const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
     const { body } = await generateReport(base, token, dataset.id, 'analytics_summary');
     const share = body.data.share;
@@ -111,8 +111,8 @@ test('an expired share is 403 EXPIRED on next access', async () => {
     // Force expiry into the past directly via the exposed db handle, keeping
     // the same token so we can still fetch it by URL below.
     const currentToken = share.url.split('/').pop();
-    db.refreshShare(share.id, { token: currentToken, expiresAt: new Date(Date.now() - 1000).toISOString() });
-    const updated = db.getShareById(share.id);
+    await db.refreshShare(share.id, { token: currentToken, expiresAt: new Date(Date.now() - 1000).toISOString() });
+    const updated = await db.getShareById(share.id);
 
     const res = await fetch(`${base}/public/shares/${updated.token}`);
     const resBody = await res.json();
@@ -124,9 +124,9 @@ test('an expired share is 403 EXPIRED on next access', async () => {
 });
 
 test('refreshing a share issues a new token; the old one 404s and the new one works', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'report-refresh@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'report-refresh@example.com', { insforge });
     const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
     const { body } = await generateReport(base, token, dataset.id, 'analytics_summary');
     const oldShare = body.data.share;
@@ -150,10 +150,10 @@ test('refreshing a share issues a new token; the old one 404s and the new one wo
 });
 
 test('a user outside the workspace cannot list, refresh, or revoke its shares', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const owner = await signupAndGetSession(base, 'report-owner@example.com');
-    const outsider = await signupAndGetSession(base, 'report-outsider@example.com');
+    const owner = await signupAndGetSession(base, 'report-owner@example.com', { insforge });
+    const outsider = await signupAndGetSession(base, 'report-outsider@example.com', { insforge });
     const dataset = await uploadFixture(base, owner.token, owner.workspace.id, 'dashboard-sales.csv');
     const { body } = await generateReport(base, owner.token, dataset.id, 'analytics_summary');
     const share = body.data.share;
@@ -180,9 +180,9 @@ test('a user outside the workspace cannot list, refresh, or revoke its shares', 
 });
 
 test('the public share link needs no authentication at all', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'report-public@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'report-public@example.com', { insforge });
     const dataset = await uploadFixture(base, token, workspace.id, 'dashboard-sales.csv');
     const { body } = await generateReport(base, token, dataset.id, 'cleaned_dataset');
     const share = body.data.share;

@@ -4,27 +4,19 @@ import dotenv from 'dotenv';
 import { createDb } from './db.js';
 import { createApp } from './app.js';
 import { createStorage } from './storage.js';
+import { createInsforgeClient } from './insforge.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const PORT = process.env.PORT || 5175;
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
-const DB_FILE = process.env.DB_FILE
-  ? path.resolve(__dirname, '..', process.env.DB_FILE)
-  : path.join(__dirname, 'data', 'db.json');
-const UPLOADS_DIR = path.join(__dirname, 'data', 'uploads');
-const REPORTS_DIR = path.join(__dirname, 'data', 'reports');
 
-if (!process.env.JWT_SECRET) {
-  console.warn('[verdant-bi] JWT_SECRET not set in .env — using an insecure default for local dev only.');
-}
-
-const db = createDb(DB_FILE);
-const storage = createStorage(UPLOADS_DIR);
-const reportStorage = createStorage(REPORTS_DIR);
+const insforge = createInsforgeClient();
+const db = createDb(insforge);
+const storage = createStorage('raw-uploads');
+const reportStorage = createStorage('reports');
 const app = createApp(db, {
-  jwtSecret: JWT_SECRET,
+  insforge,
   storage,
   reportStorage,
   config: {
@@ -39,6 +31,8 @@ const app = createApp(db, {
     aiChatMaxMessagesPerWorkspacePerHour: Number(process.env.AI_CHAT_MAX_MESSAGES_PER_WORKSPACE_PER_HOUR) || 60,
     aiChatMaxContextTokens: Number(process.env.AI_CHAT_MAX_CONTEXT_TOKENS) || 4000,
     defaultShareLinkExpiryDays: Number(process.env.DEFAULT_SHARE_LINK_EXPIRY_DAYS) || 7,
+    insforgeBaseUrl: process.env.INSFORGE_PROJECT_URL || '',
+    insforgeAnonKey: process.env.INSFORGE_ANON_KEY || '',
   },
 });
 

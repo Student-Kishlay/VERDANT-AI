@@ -26,9 +26,9 @@ async function uploadFixture(base, token, workspaceId, fileName, blob) {
 }
 
 test('uploading the fixture CSV reaches status ready with the exact hand-computed summary', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'uploader@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'uploader@example.com', { insforge });
     const { status, body } = await uploadFixture(base, token, workspace.id, 'sample-sales.csv', fixtureBlob('sample-sales.csv'));
 
     assert.equal(status, 201);
@@ -54,9 +54,9 @@ test('uploading the fixture CSV reaches status ready with the exact hand-compute
 });
 
 test('re-uploading identical bytes resolves to the existing dataset, no duplicate', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'reupload@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'reupload@example.com', { insforge });
     const first = await uploadFixture(base, token, workspace.id, 'sample-sales.csv', fixtureBlob('sample-sales.csv'));
     const second = await uploadFixture(base, token, workspace.id, 'sample-sales.csv', fixtureBlob('sample-sales.csv'));
 
@@ -73,9 +73,9 @@ test('re-uploading identical bytes resolves to the existing dataset, no duplicat
 });
 
 test('a column-role override persists and takes precedence over the detected role', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'override@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'override@example.com', { insforge });
     const uploaded = await uploadFixture(base, token, workspace.id, 'sample-sales.csv', fixtureBlob('sample-sales.csv'));
     const datasetId = uploaded.body.data.dataset.id;
 
@@ -99,9 +99,9 @@ test('a column-role override persists and takes precedence over the detected rol
 });
 
 test('an oversized file is rejected before any dataset is created', async () => {
-  const { server, base } = await startServer({ maxUploadFileSizeMb: 0.0001 }); // ~100 bytes
+  const { server, base, insforge } = await startServer({ maxUploadFileSizeMb: 0.0001 }); // ~100 bytes
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'toobig@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'toobig@example.com', { insforge });
     const { status, body } = await uploadFixture(base, token, workspace.id, 'sample-sales.csv', fixtureBlob('sample-sales.csv'));
     assert.equal(status, 400);
     assert.equal(body.error.code, 'FILE_TOO_LARGE');
@@ -116,9 +116,9 @@ test('an oversized file is rejected before any dataset is created', async () => 
 });
 
 test('a disallowed file type is rejected', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'wrongtype@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'wrongtype@example.com', { insforge });
     const blob = new Blob(['just some text'], { type: 'text/plain' });
     const { status, body } = await uploadFixture(base, token, workspace.id, 'notes.txt', blob);
     assert.equal(status, 400);
@@ -129,9 +129,9 @@ test('a disallowed file type is rejected', async () => {
 });
 
 test('a file over the row-count ceiling is rejected and no dataset is created', async () => {
-  const { server, base } = await startServer({ maxUploadRowCount: 5 });
+  const { server, base, insforge } = await startServer({ maxUploadRowCount: 5 });
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'toomanyrows@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'toomanyrows@example.com', { insforge });
     const { status, body } = await uploadFixture(base, token, workspace.id, 'sample-sales.csv', fixtureBlob('sample-sales.csv'));
     assert.equal(status, 400);
     assert.equal(body.error.code, 'ROW_LIMIT_EXCEEDED');
@@ -146,9 +146,9 @@ test('a file over the row-count ceiling is rejected and no dataset is created', 
 });
 
 test('a header-only (effectively empty) CSV ends with status failed and a reason, not a hang', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'empty@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'empty@example.com', { insforge });
     const blob = new Blob(['order_date,revenue\n'], { type: 'text/csv' });
     const { status, body } = await uploadFixture(base, token, workspace.id, 'empty.csv', blob);
     assert.equal(status, 201);
@@ -160,10 +160,10 @@ test('a header-only (effectively empty) CSV ends with status failed and a reason
 });
 
 test('a user outside the workspace cannot read or delete its dataset', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const owner = await signupAndGetSession(base, 'owner-ds@example.com');
-    const outsider = await signupAndGetSession(base, 'outsider-ds@example.com');
+    const owner = await signupAndGetSession(base, 'owner-ds@example.com', { insforge });
+    const outsider = await signupAndGetSession(base, 'outsider-ds@example.com', { insforge });
     const uploaded = await uploadFixture(base, owner.token, owner.workspace.id, 'sample-sales.csv', fixtureBlob('sample-sales.csv'));
     const datasetId = uploaded.body.data.dataset.id;
 
@@ -189,9 +189,9 @@ test('a user outside the workspace cannot read or delete its dataset', async () 
 });
 
 test('deleting a dataset removes it for its owner too', async () => {
-  const { server, base } = await startServer();
+  const { server, base, insforge } = await startServer();
   try {
-    const { token, workspace } = await signupAndGetSession(base, 'deleter@example.com');
+    const { token, workspace } = await signupAndGetSession(base, 'deleter@example.com', { insforge });
     const uploaded = await uploadFixture(base, token, workspace.id, 'sample-sales.csv', fixtureBlob('sample-sales.csv'));
     const datasetId = uploaded.body.data.dataset.id;
 

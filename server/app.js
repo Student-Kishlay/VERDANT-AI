@@ -17,8 +17,11 @@ import { getProvider } from './llm/index.js';
 import { createRateLimiter } from './rate-limiter.js';
 import { generateReport, REPORT_TYPES } from './pipeline/generate-report.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+// import.meta.url is undefined when bundled as CommonJS (Netlify Functions);
+// there the CDN serves public/, so the fallback path is never hit.
+const PUBLIC_DIR = import.meta.url
+  ? path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public')
+  : path.join(process.cwd(), 'public');
 
 const DEFAULT_CONFIG = {
   maxUploadFileSizeMb: 25,

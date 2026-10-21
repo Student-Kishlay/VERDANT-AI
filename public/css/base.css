@@ -42,7 +42,12 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: var(--color-bg);
+  background-color: var(--color-bg);
+  /* Light wash over the photo keeps dark text on the page readable. */
+  background-image: linear-gradient(rgba(244, 246, 245, 0.8), rgba(244, 246, 245, 0.8)), url('/assets/mountain-photo.jpg');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
   color: var(--color-text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;

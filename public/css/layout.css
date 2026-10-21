@@ -6,7 +6,7 @@
 
 .sidebar {
   background-color: var(--color-sidebar);
-  background-image: linear-gradient(180deg, rgba(15, 30, 50, 0.6), rgba(15, 30, 50, 0.82)), url('/assets/mountain-scenery.svg');
+  background-image: linear-gradient(180deg, rgba(15, 30, 50, 0.6), rgba(15, 30, 50, 0.82)), url('/assets/mountain-photo.jpg');
   background-size: cover;
   background-position: center;
   color: var(--color-sidebar-text);

@@ -4,7 +4,7 @@ import { createStorage } from './storage.js';
 import { createInsforgeClient } from './insforge.js';
 
 // Shared by the local server (server/index.js) and the Netlify Function
-// (netlify/functions/api.js). Expects env vars to already be loaded.
+// (netlify/functions/api.mjs). Expects env vars to already be loaded.
 export function buildApp() {
   const insforge = createInsforgeClient();
   const db = createDb(insforge);

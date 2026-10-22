@@ -13,7 +13,9 @@ import { segmentCustomers } from './pipeline/segment-customers.js';
 import { detectAnomalies } from './pipeline/detect-anomalies.js';
 import { buildContextSummary } from './pipeline/build-context-summary.js';
 import { verifyChartGrounding } from './pipeline/verify-chart-grounding.js';
+import { verifyReplyNumbers } from './pipeline/verify-reply-numbers.js';
 import { getProvider } from './llm/index.js';
+import { createChatTools } from './llm/chat-tools.js';
 import { createRateLimiter } from './rate-limiter.js';
 import { generateReport, REPORT_TYPES } from './pipeline/generate-report.js';
 
@@ -594,61 +596,9 @@ export function createApp(db, { insforge, storage, reportStorage, config } = {})
   });
 
   // ── AI Chat + Chart Grounding (Milestone 6) ─────────────────────────────
-  // Converts a markdown table (possibly with multi-line cells) into plain lines.
-function tablesToText(s) {
-  const lines = s.split('\n');
-  const out = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    if (!lines[i].trim().startsWith('|')) {
-      out.push(lines[i]);
-      i++;
-      continue;
-    }
-
-    // collect table rows; a row can span several lines until it ends with "|"
-    const rows = [];
-    while (i < lines.length && lines[i].trim().startsWith('|')) {
-      let row = lines[i];
-      while (!row.trim().endsWith('|') && i + 1 < lines.length) {
-        i++;
-        row += '\n' + lines[i];
-      }
-      rows.push(row);
-      i++;
-    }
-
-    const parsed = rows
-      .map((r) => r.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim()))
-      .filter((cells) => !cells.every((c) => /^:?-{2,}:?$/.test(c))); // drop |---|---| row
-
-    if (!parsed.length) continue;
-    const header = parsed[0];
-    const body = parsed.slice(1);
-
-    for (const cells of body) {
-      if (header.length === 2) {
-        // "Aspect | Details" style -> "Aspect:" then the details
-        const label = cells[0].replace(/\*\*/g, '');
-        const value = (cells[1] || '').split('\n').map((l) => l.trim()).filter(Boolean);
-        if (value.length <= 1) {
-          out.push(`${label}: ${value[0] || ''}`);
-        } else {
-          out.push(`${label}:`);
-          value.forEach((l) => out.push(l.startsWith('•') || l.startsWith('-') ? l : `• ${l}`));
-        }
-        out.push('');
-      } else {
-        // many columns -> one line per row: "Header: value; Header: value"
-        out.push('- ' + cells.map((c, idx) => `${header[idx] || ''}: ${c}`).join('; '));
-      }
-    }
-    out.push('');
-  }
-  return out.join('\n');
-}
-
+  // Replies are Markdown, rendered client-side by a safe DOM builder
+  // (public/js/lib/markdown.js). This only strips what shouldn't reach it:
+  // reasoning blocks, a whole-reply code fence, JSON wrappers, and any HTML.
 function normalizeReply(input) {
   try {
     if (input == null) return '';
@@ -673,20 +623,9 @@ function normalizeReply(input) {
     s = s.replace(/<think>[\s\S]*?<\/think>/gi, '');
     s = s.replace(/^```(?:html|markdown|md|text)?\n([\s\S]*?)\n```$/i, '$1');
 
-    // HTML -> plain text
+    // HTML -> text (line breaks kept, tags dropped)
     s = s.replace(/<\s*br\s*\/?>/gi, '\n');
-    s = s.replace(/<\/(p|div|h[1-6]|ul|ol|table|tr)\s*>/gi, '\n\n');
-    s = s.replace(/<li[^>]*>/gi, '- ');
-    s = s.replace(/<\/li\s*>/gi, '\n');
     s = s.replace(/<\/?[a-z][a-z0-9]*(\s[^>]*)?>/gi, '');
-
-    // markdown tables -> readable lines
-    s = tablesToText(s);
-
-    // markdown -> plain text (your chat box does not render markdown)
-    s = s.replace(/^#{1,6}\s*/gm, '');          // headings
-    s = s.replace(/\*\*(.+?)\*\*/g, '$1');      // bold
-    s = s.replace(/^\s*[•*]\s+/gm, '- ');       // bullets -> "- "
 
     // entities
     s = s
@@ -759,6 +698,7 @@ function publicChatMessage(m) {
     await db.addChatMessage({ workspaceId, datasetId, userId: req.user.id, role: 'user', content: message });
 
     const provider = getProvider(cfg);
+    const tools = createChatTools(columns, rows, { anomalyContaminationRate: cfg.anomalyContaminationRate });
     let providerResult;
     try {
       providerResult = await provider.generateReply({
@@ -770,6 +710,7 @@ function publicChatMessage(m) {
         conversationHistory,
         apiKey: cfg.groqApiKey,
         model: cfg.groqModel,
+        tools,
       });
     } catch (err) {
       console.error(
@@ -781,12 +722,37 @@ function publicChatMessage(m) {
           timestamp: new Date().toISOString(),
         })
       );
-      providerResult = { reply: "I ran into a problem answering that — please try again.", chart_payload: null };
+      providerResult = {
+        reply:
+          err.code === 'PROVIDER_RATE_LIMITED'
+            ? 'The AI service is busy right now (its per-minute limit was reached) — please try again in a few seconds.'
+            : 'I ran into a problem answering that — please try again.',
+        chart_payload: null,
+      };
     }
 
     let chartPayload = null;
     let groundingStatus = 'n/a';
-    if (providerResult.chart_payload) {
+    if (providerResult.grounded_by_tools) {
+      // Tool-grounded reply: charts come straight from tool results (so they
+      // need no re-verification), and every figure in the text is checked
+      // against what the tools computed plus the dataset summary.
+      const reply = normalizeReply(providerResult.reply);
+      const figures = verifyReplyNumbers(reply, {
+        tools: tools.calls.map((c) => c.result),
+        overview: contextSummary.dataset_overview,
+        stats: contextSummary.numeric_stats,
+      });
+      chartPayload = {
+        version: 2,
+        charts: tools.charts,
+        sources: tools.calls.map((c) => c.source),
+        figures,
+      };
+      if (figures.unverified.length > 0) groundingStatus = 'rejected';
+      else if (tools.calls.length > 0 || figures.checked > 0) groundingStatus = 'verified';
+      providerResult = { ...providerResult, reply: reply || "I couldn't put an answer together for that — please try rephrasing." };
+    } else if (providerResult.chart_payload) {
       const verification = verifyChartGrounding(providerResult.chart_payload, rows, {
         threshold: cfg.chartGroundingThreshold,
       });
@@ -797,8 +763,11 @@ function publicChatMessage(m) {
     }
 
     const reply = normalizeReply(providerResult.reply);
+    // Tool-grounded replies carry their verification in chart_payload.figures
+    // (shown as a notice by the client); the notice below is the legacy
+    // model-proposed-chart path.
     const replyText =
-      groundingStatus === 'rejected'
+      groundingStatus === 'rejected' && !providerResult.grounded_by_tools
         ? `${reply}\n\nI couldn't confirm this chart against your data, so I'm not showing it.`
         : reply;
 

@@ -325,10 +325,34 @@ your data, so I'm not showing it."*
 `GROQ_API_KEY` select between `server/llm/mock-provider.js` (default — a
 deterministic, keyword-matched responder that only ever reads real
 aggregates, needing no credentials) and `server/llm/groq-provider.js` (a
-real call to Groq's OpenAI-compatible chat-completions endpoint). **The Groq
-path is implemented but has never been exercised against a live API key in
-this build** — there is no InsForge project or Groq key available in this
-environment. Confirm it actually works before relying on it.
+real call to Groq's OpenAI-compatible chat-completions endpoint, checked
+against a live key with `openai/gpt-oss-120b`).
+
+**Tool-grounded answers (Groq path).** The model gets the schema and
+summary only, plus the tools in `server/llm/chat-tools.js` — `aggregate`
+(sum/avg/count/count_distinct/min/max, group by column or day/week/month/
+quarter/year, filters), `forecast_revenue`, `get_kpis`, `detect_anomalies`,
+`customer_segments`, `list_values` — which run server-side over the real
+rows (up to 5 tool rounds). Charts are built from those results by the
+tools themselves, never from numbers the model writes. Every figure in the
+reply text is then checked by `server/pipeline/verify-reply-numbers.js`
+against the tool results and summary (directly, or as a sum/difference/
+ratio/% change of two of them, within the reply's own display rounding).
+The reply is Markdown, rendered client-side by `public/js/lib/markdown.js`
+(DOM nodes only, no `innerHTML`). Such a message's `chart_payload` is:
+
+```json
+{ "version": 2,
+  "charts": [{ "type": "line", "title": "Revenue forecast — next 30 days", "labels": ["2024-02-01", "…"],
+               "series": [{ "name": "Actual", "values": [100, "…", null] },
+                          { "name": "Forecast", "style": "dashed", "values": [null, "…", 3880] }] }],
+  "sources": ["Revenue forecast, 30 days, from 10 days of history"],
+  "figures": { "checked": 8, "verified": 8, "unverified": [] } }
+```
+
+`grounding_status` is `verified` when tools were used and every figure
+checked out, `rejected` when any figure couldn't be traced (the reply is
+still shown, with those figures flagged), `n/a` otherwise.
 
 **Chart grounding (§11, points 3-4) — the actual trust mechanism, and it
 does not care which provider proposed the chart:**

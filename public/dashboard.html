@@ -27,54 +27,114 @@
         </div>
 
         <div id="dashboard-content" hidden>
-          <form id="filter-bar" class="filter-bar card">
-            <div class="field">
-              <label for="filter-start-date">From</label>
-              <input type="date" id="filter-start-date" />
+          <form id="filter-bar" class="filter-bar card" aria-label="Dashboard filters">
+            <div class="filter-row">
+              <div class="range-presets" role="group" aria-label="Date range">
+                <button type="button" class="preset" data-preset="7d">Last 7 days</button>
+                <button type="button" class="preset" data-preset="30d">Last 30 days</button>
+                <button type="button" class="preset" data-preset="this-month">This month</button>
+                <button type="button" class="preset" data-preset="last-month">Last month</button>
+                <button type="button" class="preset" data-preset="all" aria-pressed="true">All time</button>
+              </div>
+              <div class="export-actions">
+                <button type="button" id="export-csv" class="btn btn-secondary">Export CSV</button>
+                <button type="button" id="export-pdf" class="btn btn-secondary">Save as PDF</button>
+              </div>
             </div>
-            <div class="field">
-              <label for="filter-end-date">To</label>
-              <input type="date" id="filter-end-date" />
+            <div class="filter-row">
+              <div class="field">
+                <label for="filter-start-date">From</label>
+                <input type="date" id="filter-start-date" />
+              </div>
+              <div class="field">
+                <label for="filter-end-date">To</label>
+                <input type="date" id="filter-end-date" />
+              </div>
+              <div class="field">
+                <label for="filter-region">Region</label>
+                <select id="filter-region">
+                  <option value="">All regions</option>
+                </select>
+              </div>
+              <div class="field" id="filter-category-field" hidden>
+                <label for="filter-category">Category</label>
+                <select id="filter-category">
+                  <option value="">All categories</option>
+                </select>
+              </div>
+              <button type="button" id="filter-clear" class="btn btn-secondary">Clear filters</button>
             </div>
-            <div class="field">
-              <label for="filter-region">Region</label>
-              <select id="filter-region">
-                <option value="">All regions</option>
-              </select>
-            </div>
-            <button type="button" id="filter-clear" class="btn btn-secondary">Clear filters</button>
+            <p class="range-note" id="range-note"></p>
           </form>
 
           <section class="stat-grid" aria-label="KPIs">
             <div class="card stat-card">
               <span class="stat-label">Total Revenue</span>
               <span class="stat-value" id="kpi-total-revenue">—</span>
+              <span class="mom-badge" id="mom-total_revenue"></span>
             </div>
             <div class="card stat-card">
               <span class="stat-label">Total Orders</span>
               <span class="stat-value" id="kpi-total-orders">—</span>
+              <span class="mom-badge" id="mom-total_orders"></span>
             </div>
             <div class="card stat-card">
               <span class="stat-label">Average Order Value</span>
               <span class="stat-value" id="kpi-aov">—</span>
+              <span class="mom-badge" id="mom-avg_order_value"></span>
             </div>
             <div class="card stat-card">
               <span class="stat-label">Active Customers</span>
               <span class="stat-value" id="kpi-active-customers">—</span>
+              <span class="mom-badge" id="mom-active_customers"></span>
             </div>
           </section>
 
           <section class="chart-grid">
             <div class="card chart-card">
-              <h3>Revenue Trend</h3>
-              <div class="chart-wrap"><canvas id="revenue-trend-chart"></canvas></div>
+              <h3 id="revenue-trend-title">Revenue Trend</h3>
+              <div class="chart-wrap"><canvas id="revenue-trend-chart" aria-label="Revenue over time" role="img"></canvas></div>
             </div>
             <div class="card chart-card">
               <h3>Category Mix</h3>
+              <p class="section-hint" id="category-mix-hint">Click a bar to filter the dashboard to that category.</p>
               <div class="chart-wrap" id="category-mix-wrap">
-                <canvas id="category-mix-chart"></canvas>
+                <canvas id="category-mix-chart" aria-label="Revenue by category" role="img"></canvas>
               </div>
               <p class="section-hint" id="category-mix-empty" hidden>No category column detected for this dataset.</p>
+            </div>
+          </section>
+
+          <section class="detail-grid">
+            <div class="card">
+              <h3>Top Products</h3>
+              <div class="table-scroll" id="top-products-wrap">
+                <table class="rank-table">
+                  <thead>
+                    <tr><th scope="col">#</th><th scope="col">Product</th><th scope="col" class="num">Revenue</th><th scope="col" class="num">Units</th><th scope="col">Share</th></tr>
+                  </thead>
+                  <tbody id="top-products-body"></tbody>
+                </table>
+              </div>
+              <p class="section-hint" id="top-products-empty" hidden></p>
+            </div>
+
+            <div class="card" id="customer-value-card">
+              <h3>Customer Acquisition Cost vs. Lifetime Value</h3>
+              <div id="customer-value-body">
+                <dl class="metric-list">
+                  <div><dt>Avg. customer lifetime value</dt><dd id="cv-ltv">—</dd></div>
+                  <div><dt>New customers in range</dt><dd id="cv-new">—</dd></div>
+                  <div><dt>Customer acquisition cost</dt><dd id="cv-cac">—</dd></div>
+                  <div><dt>LTV : CAC</dt><dd id="cv-ratio">—</dd></div>
+                </dl>
+                <div class="field spend-field">
+                  <label for="cv-spend">Marketing spend for this date range (USD)</label>
+                  <input type="number" id="cv-spend" min="0" step="any" inputmode="decimal" placeholder="e.g. 2500" />
+                </div>
+                <p class="section-hint" id="cv-note">Your dataset has no marketing spend, so enter it here to calculate CAC. It's saved only in this browser.</p>
+              </div>
+              <p class="section-hint" id="customer-value-empty" hidden>No customer column detected for this dataset.</p>
             </div>
           </section>
         </div>

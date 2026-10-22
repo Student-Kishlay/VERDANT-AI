@@ -54,10 +54,9 @@ test('a pending invitation for the user\'s email is accepted on first /api/auth/
     const { token } = await signupAndGetSession(base, 'invited@example.com', { insforge });
     const me = await fetch(`${base}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
     const meBody = await me.json();
-    // Their own personal workspace, plus the one they were invited to.
-    assert.equal(meBody.data.workspaces.length, 2);
-    const invitedWorkspace = meBody.data.workspaces.find((w) => w.id === owner.workspace.id);
-    assert.equal(invitedWorkspace.role, 'member');
+    // Only their own personal workspace — joining requires accepting the invite.
+    assert.equal(meBody.data.workspaces.length, 1);
+    assert.ok(!meBody.data.workspaces.some((w) => w.id === owner.workspace.id));
   } finally {
     server.close();
   }

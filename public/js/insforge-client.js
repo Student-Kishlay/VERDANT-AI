@@ -155,6 +155,18 @@ export const insforge = {
     },
   },
 
+  invitations: {
+    listMine() {
+      return request('/api/invitations');
+    },
+    accept(invitationId) {
+      return request(`/api/invitations/${invitationId}/accept`, { method: 'POST' });
+    },
+    decline(invitationId) {
+      return request(`/api/invitations/${invitationId}/decline`, { method: 'POST' });
+    },
+  },
+
   config: {
     get() {
       return request('/api/config', { auth: false });
@@ -186,8 +198,8 @@ export const insforge = {
     // These four now call real InsForge Edge Functions directly (Phase 3 —
     // see functions/*/index.ts) instead of this app's Express server;
     // Postgres RLS (not a manual membership check) scopes dataset access.
-    getKpis(id, { startDate, endDate, region } = {}) {
-      return invokeFunction('compute-kpis', { dataset_id: id, start_date: startDate, end_date: endDate, region });
+    getKpis(id, { startDate, endDate, region, category } = {}) {
+      return invokeFunction('compute-kpis', { dataset_id: id, start_date: startDate, end_date: endDate, region, category });
     },
     getForecast(id, horizonDays) {
       return invokeFunction('forecast-revenue', { dataset_id: id, horizon_days: horizonDays });

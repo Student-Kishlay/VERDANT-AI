@@ -103,9 +103,8 @@ export function createApp(db, { insforge, storage, reportStorage, config } = {})
 
   // Self-provisioning: the first time a signed-in user has zero workspaces
   // (i.e. right after their first InsForge signup), give them a personal
-  // workspace and convert any pending invitations for their email into
-  // memberships — mirroring what the old mock did inline during signup,
-  // now done lazily since InsForge issues sessions, not this server.
+  // workspace. Pending invitations are NOT auto-accepted here — the invitee
+  // has to accept each one explicitly (POST /api/invitations/:id/accept).
   app.get('/api/auth/me', requireAuth, async (req, res) => {
     const profile = await db.getUserById(req.user.id);
     const displayName = profile?.profile?.name || req.user.email.split('@')[0];
@@ -118,12 +117,6 @@ export function createApp(db, { insforge, storage, reportStorage, config } = {})
         ownerId: req.user.id,
       });
       await db.addMember({ workspaceId: workspace.id, userId: req.user.id, role: 'owner' });
-
-      for (const invitation of await db.findPendingInvitationsForEmail(req.user.email)) {
-        await db.addMember({ workspaceId: invitation.workspace_id, userId: req.user.id, role: 'member' });
-        await db.acceptInvitation(invitation.id);
-      }
-
       workspaces = await db.getWorkspacesForUser(req.user.id);
     }
 
@@ -194,18 +187,103 @@ export function createApp(db, { insforge, storage, reportStorage, config } = {})
     const { email } = req.body || {};
     if (!email || !email.trim()) return fail(res, 400, 'INVALID_INPUT', 'An email address is required.');
 
-    const existingUser = await db.findUserByEmail(email);
-    if (existingUser) {
-      if (!(await db.isMember(workspaceId, existingUser.id))) {
-        await db.addMember({ workspaceId, userId: existingUser.id, role: 'member' });
-      }
-      const members = await db.getMembers(workspaceId);
-      return ok(res, { status: 'joined', member: members.find((m) => m.user_id === existingUser.id) }, 201);
+    const invitedEmail = email.trim().toLowerCase();
+
+    // Never add anyone directly — even an already-registered user only gets
+    // a pending invitation they must accept while signed in as that email.
+    const existingUser = await db.findUserByEmail(invitedEmail);
+    if (existingUser && (await db.isMember(workspaceId, existingUser.id))) {
+      return fail(res, 409, 'ALREADY_MEMBER', 'That person is already a member of this workspace.');
     }
 
-    const existingInvitation = await db.findPendingInvitation(workspaceId, email);
-    const invitation = existingInvitation || (await db.createInvitation({ workspaceId, invitedEmail: email, invitedBy: req.user.id }));
-    return ok(res, { status: 'pending', invitation }, 201);
+    const existingInvitation = await db.findPendingInvitation(workspaceId, invitedEmail);
+    const invitation =
+      existingInvitation || (await db.createInvitation({ workspaceId, invitedEmail, invitedBy: req.user.id }));
+
+    const email_sent = await sendInvitationEmail(req, invitation);
+    return ok(res, { status: 'pending', invitation, email_sent }, 201);
+  });
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  }
+
+  // Best-effort: the invitation stays valid even if the email fails — the
+  // invitee also sees it on the Team page once signed in with that email.
+  async function sendInvitationEmail(req, invitation) {
+    if (typeof insforge?.sendEmail !== 'function') return false;
+    try {
+      const workspace = await db.getWorkspaceById(invitation.workspace_id);
+      const inviter = await db.getUserById(invitation.invited_by);
+      const inviterName = inviter?.profile?.name || inviter?.email || 'A teammate';
+      const origin = req.get('origin') || `${req.protocol}://${req.get('host')}`;
+      const link = `${origin}/team.html?invite=${encodeURIComponent(invitation.id)}`;
+      await insforge.sendEmail({
+        to: invitation.invited_email,
+        subject: `You've been invited to join ${workspace?.name || 'a workspace'} on Verdant BI`,
+        html:
+          `<p>${escapeHtml(inviterName)} invited you to join the workspace ` +
+          `<strong>${escapeHtml(workspace?.name || '')}</strong> on Verdant BI.</p>` +
+          `<p><a href="${escapeHtml(link)}">Review and accept the invitation</a></p>` +
+          `<p>You'll need to sign in (or sign up) with this email address to accept. ` +
+          `If you weren't expecting this, you can ignore this email.</p>`,
+      });
+      return true;
+    } catch (err) {
+      console.error('Failed to send invitation email:', err.message);
+      return false;
+    }
+  }
+
+  // Invitations addressed to the signed-in user's own (verified, from the
+  // JWT) email — this is what makes joining require email ownership.
+  async function findOwnInvitation(req, res) {
+    const invitation = await db.getInvitationById(req.params.id);
+    if (!invitation || invitation.invited_email.toLowerCase() !== req.user.email.toLowerCase()) {
+      fail(res, 404, 'NOT_FOUND', 'Invitation not found.');
+      return null;
+    }
+    if (invitation.status !== 'pending') {
+      fail(res, 409, 'INVITATION_CLOSED', `This invitation has already been ${invitation.status === 'accepted' ? 'accepted' : 'withdrawn or declined'}.`);
+      return null;
+    }
+    return invitation;
+  }
+
+  app.get('/api/invitations', requireAuth, async (req, res) => {
+    const pending = await db.findPendingInvitationsForEmail(req.user.email);
+    const invitations = await Promise.all(
+      pending.map(async (i) => {
+        const workspace = await db.getWorkspaceById(i.workspace_id);
+        const inviter = await db.getUserById(i.invited_by);
+        return {
+          id: i.id,
+          workspace_id: i.workspace_id,
+          workspace_name: workspace?.name ?? null,
+          invited_by: inviter?.profile?.name || inviter?.email || null,
+          created_at: i.created_at,
+        };
+      })
+    );
+    return ok(res, { invitations });
+  });
+
+  app.post('/api/invitations/:id/accept', requireAuth, async (req, res) => {
+    const invitation = await findOwnInvitation(req, res);
+    if (!invitation) return;
+    if (!(await db.isMember(invitation.workspace_id, req.user.id))) {
+      await db.addMember({ workspaceId: invitation.workspace_id, userId: req.user.id, role: 'member' });
+    }
+    await db.acceptInvitation(invitation.id);
+    const workspace = await db.getWorkspaceById(invitation.workspace_id);
+    return ok(res, { workspace: { ...workspace, role: 'member' } });
+  });
+
+  app.post('/api/invitations/:id/decline', requireAuth, async (req, res) => {
+    const invitation = await findOwnInvitation(req, res);
+    if (!invitation) return;
+    await db.revokeInvitation(invitation.id);
+    return ok(res, { status: 'declined' });
   });
 
   // ── Datasets (Milestone 3: Upload & Clean) ──────────────────────────────
@@ -428,9 +506,9 @@ export function createApp(db, { insforge, storage, reportStorage, config } = {})
 
     const columns = (await db.getColumnMaps(dataset.id)).map(withEffectiveRole);
     const rows = await db.getAllDatasetRows(dataset.id);
-    const { start_date, end_date, region } = req.query;
+    const { start_date, end_date, region, category } = req.query;
 
-    const kpis = computeKpis(columns, rows, { startDate: start_date, endDate: end_date, region });
+    const kpis = computeKpis(columns, rows, { startDate: start_date, endDate: end_date, region, category });
     return ok(res, { kpis });
   });
 
@@ -516,17 +594,124 @@ export function createApp(db, { insforge, storage, reportStorage, config } = {})
   });
 
   // ── AI Chat + Chart Grounding (Milestone 6) ─────────────────────────────
+  // Converts a markdown table (possibly with multi-line cells) into plain lines.
+function tablesToText(s) {
+  const lines = s.split('\n');
+  const out = [];
+  let i = 0;
 
-  function publicChatMessage(m) {
-    return {
-      id: m.id,
-      role: m.role,
-      content: m.content,
-      chart_payload: m.chart_payload,
-      grounding_status: m.grounding_status,
-      created_at: m.created_at,
-    };
+  while (i < lines.length) {
+    if (!lines[i].trim().startsWith('|')) {
+      out.push(lines[i]);
+      i++;
+      continue;
+    }
+
+    // collect table rows; a row can span several lines until it ends with "|"
+    const rows = [];
+    while (i < lines.length && lines[i].trim().startsWith('|')) {
+      let row = lines[i];
+      while (!row.trim().endsWith('|') && i + 1 < lines.length) {
+        i++;
+        row += '\n' + lines[i];
+      }
+      rows.push(row);
+      i++;
+    }
+
+    const parsed = rows
+      .map((r) => r.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim()))
+      .filter((cells) => !cells.every((c) => /^:?-{2,}:?$/.test(c))); // drop |---|---| row
+
+    if (!parsed.length) continue;
+    const header = parsed[0];
+    const body = parsed.slice(1);
+
+    for (const cells of body) {
+      if (header.length === 2) {
+        // "Aspect | Details" style -> "Aspect:" then the details
+        const label = cells[0].replace(/\*\*/g, '');
+        const value = (cells[1] || '').split('\n').map((l) => l.trim()).filter(Boolean);
+        if (value.length <= 1) {
+          out.push(`${label}: ${value[0] || ''}`);
+        } else {
+          out.push(`${label}:`);
+          value.forEach((l) => out.push(l.startsWith('•') || l.startsWith('-') ? l : `• ${l}`));
+        }
+        out.push('');
+      } else {
+        // many columns -> one line per row: "Header: value; Header: value"
+        out.push('- ' + cells.map((c, idx) => `${header[idx] || ''}: ${c}`).join('; '));
+      }
+    }
+    out.push('');
   }
+  return out.join('\n');
+}
+
+function normalizeReply(input) {
+  try {
+    if (input == null) return '';
+
+    let s;
+    if (typeof input === 'string') s = input;
+    else if (typeof input === 'object') s = input.reply ?? input.content ?? input.text ?? JSON.stringify(input);
+    else s = String(input);
+
+    // unwrap JSON replies
+    const t = s.trim();
+    if (t.startsWith('{') && t.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(t);
+        if (parsed && typeof parsed.reply === 'string') s = parsed.reply;
+      } catch (_) {}
+    }
+
+    s = s.replace(/\r\n/g, '\n');
+
+    // reasoning blocks and code-fence wrappers
+    s = s.replace(/<think>[\s\S]*?<\/think>/gi, '');
+    s = s.replace(/^```(?:html|markdown|md|text)?\n([\s\S]*?)\n```$/i, '$1');
+
+    // HTML -> plain text
+    s = s.replace(/<\s*br\s*\/?>/gi, '\n');
+    s = s.replace(/<\/(p|div|h[1-6]|ul|ol|table|tr)\s*>/gi, '\n\n');
+    s = s.replace(/<li[^>]*>/gi, '- ');
+    s = s.replace(/<\/li\s*>/gi, '\n');
+    s = s.replace(/<\/?[a-z][a-z0-9]*(\s[^>]*)?>/gi, '');
+
+    // markdown tables -> readable lines
+    s = tablesToText(s);
+
+    // markdown -> plain text (your chat box does not render markdown)
+    s = s.replace(/^#{1,6}\s*/gm, '');          // headings
+    s = s.replace(/\*\*(.+?)\*\*/g, '$1');      // bold
+    s = s.replace(/^\s*[•*]\s+/gm, '- ');       // bullets -> "- "
+
+    // entities
+    s = s
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&');
+
+    return s.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  } catch (err) {
+    return typeof input === 'string' ? input : '';
+  }
+}
+function publicChatMessage(m) {
+  return {
+    id: m.id,
+    role: m.role,
+    content: m.role === 'assistant' ? normalizeReply(m.content) : m.content,
+    chart_payload: m.chart_payload,
+    grounding_status: m.grounding_status,
+    created_at: m.created_at,
+  };
+}
 
   app.get('/api/chat', requireAuth, async (req, res) => {
     const { workspace_id: workspaceId, dataset_id: datasetId } = req.query;
@@ -611,10 +796,11 @@ export function createApp(db, { insforge, storage, reportStorage, config } = {})
       }
     }
 
+    const reply = normalizeReply(providerResult.reply);
     const replyText =
       groundingStatus === 'rejected'
-        ? `${providerResult.reply}\n\nI couldn't confirm this chart against your data, so I'm not showing it.`
-        : providerResult.reply;
+        ? `${reply}\n\nI couldn't confirm this chart against your data, so I'm not showing it.`
+        : reply;
 
     const assistantMessage = await db.addChatMessage({
       workspaceId,

@@ -72,9 +72,9 @@ Done so far:
   URL 403 on the next request, checked server-side — the raw storage path
   is never exposed to the client.
 - Team / Multi-User Workspaces (`/team.html`, §12): create team
-  workspaces; invite by email (immediate membership for an existing user,
-  a pending invitation that auto-converts to membership the moment that
-  exact email signs up otherwise). Added real **role enforcement** this
+  workspaces; invite by email (always a pending invitation plus an
+  invitation email; the invitee joins only after signing in with that
+  exact email and accepting it on the Team page). Added real **role enforcement** this
   milestone: deleting a dataset and refreshing/revoking a share link now
   require the `owner` role, not just membership — retrofitted onto the
   three existing routes §12 names as owner-only, checked server-side.
@@ -174,8 +174,8 @@ checklist:
   bytes are checked (so "opens without corruption" is verified, not
   assumed), revoking/expiring a share 403s the next access, refreshing
   issues a working new token and 404s the old one.
-- **Team/roles** (`team.test.js`): immediate membership for an existing
-  invitee, pending-invitation-to-membership conversion on signup, and that
+- **Team/roles** (`team.test.js`): invitations stay pending until the
+  invited email accepts (no auto-join), only that email can accept, and that
   a non-owner member is rejected from the three owner-only actions (delete
   dataset, refresh/revoke a share).
 - **XSS** (`dom-safe.test.js`, `pipeline.test.js`, `chat.test.js`,

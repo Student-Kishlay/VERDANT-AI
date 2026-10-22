@@ -26,6 +26,25 @@ async function invite(base, token, workspaceId, email) {
   return { status: res.status, body: await res.json() };
 }
 
+async function listMyInvitations(base, token) {
+  const res = await fetch(`${base}/api/invitations`, { headers: { Authorization: `Bearer ${token}` } });
+  return (await res.json()).data.invitations;
+}
+
+async function respond(base, token, invitationId, action) {
+  const res = await fetch(`${base}/api/invitations/${invitationId}/${action}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return { status: res.status, body: await res.json() };
+}
+
+// Invite + the invitee accepting — what used to happen implicitly.
+async function inviteAndAccept(base, ownerToken, workspaceId, invitee) {
+  const { body } = await invite(base, ownerToken, workspaceId, invitee.user.email);
+  return respond(base, invitee.token, body.data.invitation.id, 'accept');
+}
+
 async function getMembers(base, token, workspaceId) {
   const res = await fetch(`${base}/api/workspaces/${workspaceId}/members`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -58,7 +77,7 @@ test('creating a team workspace makes the creator its owner', async () => {
   }
 });
 
-test('inviting an already-registered email grants immediate membership', async () => {
+test('inviting an already-registered email does not add them until they accept', async () => {
   const { server, base, insforge } = await startServer();
   try {
     const owner = await signupAndGetSession(base, 'team-owner1@example.com', { insforge });
@@ -67,47 +86,107 @@ test('inviting an already-registered email grants immediate membership', async (
 
     const { status, body } = await invite(base, owner.token, workspace.id, 'team-existing@example.com');
     assert.equal(status, 201);
-    assert.equal(body.data.status, 'joined');
+    assert.equal(body.data.status, 'pending');
+    assert.equal(body.data.email_sent, true);
 
-    const { body: membersBody } = await getMembers(base, owner.token, workspace.id);
-    const member = membersBody.data.members.find((m) => m.email === 'team-existing@example.com');
+    const sent = insforge.sentEmails.find((e) => e.to === 'team-existing@example.com');
+    assert.ok(sent);
+    assert.ok(sent.html.includes(`/team.html?invite=${body.data.invitation.id}`));
+
+    const { body: before } = await getMembers(base, owner.token, workspace.id);
+    assert.equal(before.data.members.length, 1);
+    assert.equal(before.data.pending_invitations.length, 1);
+
+    const mine = await listMyInvitations(base, existingUser.token);
+    assert.equal(mine.length, 1);
+    assert.equal(mine[0].workspace_name, 'Acme Corp');
+
+    const accepted = await respond(base, existingUser.token, mine[0].id, 'accept');
+    assert.equal(accepted.status, 200);
+
+    const { body: after } = await getMembers(base, owner.token, workspace.id);
+    const member = after.data.members.find((m) => m.email === 'team-existing@example.com');
     assert.ok(member);
     assert.equal(member.role, 'member');
+    assert.equal(after.data.pending_invitations.length, 0);
 
-    // The invited user should now actually see the workspace themselves.
     const meRes = await fetch(`${base}/api/auth/me`, { headers: { Authorization: `Bearer ${existingUser.token}` } });
-    const meBody = await meRes.json();
-    assert.ok(meBody.data.workspaces.some((w) => w.id === workspace.id));
+    assert.ok((await meRes.json()).data.workspaces.some((w) => w.id === workspace.id));
   } finally {
     server.close();
   }
 });
 
-test('inviting a non-registered email creates a pending invitation that converts to membership on signup', async () => {
+test('a non-registered invitee is not auto-joined on signup and must accept', async () => {
   const { server, base, insforge } = await startServer();
   try {
     const owner = await signupAndGetSession(base, 'team-owner2@example.com', { insforge });
     const workspace = await createTeamWorkspace(base, owner.token, 'Acme Corp');
+    await invite(base, owner.token, workspace.id, 'future-member@example.com');
 
-    const { status, body } = await invite(base, owner.token, workspace.id, 'future-member@example.com');
-    assert.equal(status, 201);
-    assert.equal(body.data.status, 'pending');
-
-    const { body: membersBefore } = await getMembers(base, owner.token, workspace.id);
-    assert.equal(membersBefore.data.pending_invitations.length, 1);
-    assert.equal(membersBefore.data.members.length, 1); // just the owner so far
-
-    // Now the invited email signs up.
     const newUser = await signupAndGetSession(base, 'future-member@example.com', { insforge });
     const meRes = await fetch(`${base}/api/auth/me`, { headers: { Authorization: `Bearer ${newUser.token}` } });
-    const meBody = await meRes.json();
-    const membership = meBody.data.workspaces.find((w) => w.id === workspace.id);
-    assert.ok(membership);
-    assert.equal(membership.role, 'member');
+    assert.ok(!(await meRes.json()).data.workspaces.some((w) => w.id === workspace.id));
+
+    const [inv] = await listMyInvitations(base, newUser.token);
+    const { status, body } = await respond(base, newUser.token, inv.id, 'accept');
+    assert.equal(status, 200);
+    assert.equal(body.data.workspace.id, workspace.id);
 
     const { body: membersAfter } = await getMembers(base, owner.token, workspace.id);
-    assert.equal(membersAfter.data.pending_invitations.length, 0);
     assert.equal(membersAfter.data.members.length, 2);
+    assert.equal(membersAfter.data.pending_invitations.length, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test('only the invited email can accept an invitation', async () => {
+  const { server, base, insforge } = await startServer();
+  try {
+    const owner = await signupAndGetSession(base, 'team-owner7@example.com', { insforge });
+    const intruder = await signupAndGetSession(base, 'intruder@example.com', { insforge });
+    const workspace = await createTeamWorkspace(base, owner.token, 'Acme Corp');
+    const { body } = await invite(base, owner.token, workspace.id, 'invitee7@example.com');
+    const invitationId = body.data.invitation.id;
+
+    assert.equal((await respond(base, intruder.token, invitationId, 'accept')).status, 404);
+    assert.equal((await respond(base, owner.token, invitationId, 'accept')).status, 404);
+    const { body: members } = await getMembers(base, owner.token, workspace.id);
+    assert.equal(members.data.members.length, 1);
+  } finally {
+    server.close();
+  }
+});
+
+test('declining an invitation removes it and it cannot be accepted afterwards', async () => {
+  const { server, base, insforge } = await startServer();
+  try {
+    const owner = await signupAndGetSession(base, 'team-owner8@example.com', { insforge });
+    const invitee = await signupAndGetSession(base, 'invitee8@example.com', { insforge });
+    const workspace = await createTeamWorkspace(base, owner.token, 'Acme Corp');
+    const { body } = await invite(base, owner.token, workspace.id, 'invitee8@example.com');
+    const invitationId = body.data.invitation.id;
+
+    assert.equal((await respond(base, invitee.token, invitationId, 'decline')).status, 200);
+    assert.equal((await listMyInvitations(base, invitee.token)).length, 0);
+    assert.equal((await respond(base, invitee.token, invitationId, 'accept')).status, 409);
+  } finally {
+    server.close();
+  }
+});
+
+test('inviting someone who is already a member is rejected', async () => {
+  const { server, base, insforge } = await startServer();
+  try {
+    const owner = await signupAndGetSession(base, 'team-owner9@example.com', { insforge });
+    const member = await signupAndGetSession(base, 'member9@example.com', { insforge });
+    const workspace = await createTeamWorkspace(base, owner.token, 'Acme Corp');
+    await inviteAndAccept(base, owner.token, workspace.id, member);
+
+    const { status, body } = await invite(base, owner.token, workspace.id, 'member9@example.com');
+    assert.equal(status, 409);
+    assert.equal(body.error.code, 'ALREADY_MEMBER');
   } finally {
     server.close();
   }
@@ -119,7 +198,7 @@ test('a non-owner member cannot invite others', async () => {
     const owner = await signupAndGetSession(base, 'team-owner3@example.com', { insforge });
     const member = await signupAndGetSession(base, 'team-member3@example.com', { insforge });
     const workspace = await createTeamWorkspace(base, owner.token, 'Acme Corp');
-    await invite(base, owner.token, workspace.id, 'team-member3@example.com');
+    await inviteAndAccept(base, owner.token, workspace.id, member);
 
     const { status, body } = await invite(base, member.token, workspace.id, 'someone-else@example.com');
     assert.equal(status, 403);
@@ -135,7 +214,7 @@ test('a non-owner member cannot delete a dataset in that workspace', async () =>
     const owner = await signupAndGetSession(base, 'team-owner4@example.com', { insforge });
     const member = await signupAndGetSession(base, 'team-member4@example.com', { insforge });
     const workspace = await createTeamWorkspace(base, owner.token, 'Acme Corp');
-    await invite(base, owner.token, workspace.id, 'team-member4@example.com');
+    await inviteAndAccept(base, owner.token, workspace.id, member);
     const dataset = await uploadFixture(base, owner.token, workspace.id, 'dashboard-sales.csv');
 
     const res = await fetch(`${base}/api/datasets/${dataset.id}`, {
@@ -156,7 +235,7 @@ test('a non-owner member cannot revoke or refresh a share in that workspace', as
     const owner = await signupAndGetSession(base, 'team-owner5@example.com', { insforge });
     const member = await signupAndGetSession(base, 'team-member5@example.com', { insforge });
     const workspace = await createTeamWorkspace(base, owner.token, 'Acme Corp');
-    await invite(base, owner.token, workspace.id, 'team-member5@example.com');
+    await inviteAndAccept(base, owner.token, workspace.id, member);
     const dataset = await uploadFixture(base, owner.token, workspace.id, 'dashboard-sales.csv');
 
     const genRes = await fetch(`${base}/api/datasets/${dataset.id}/reports`, {
@@ -188,7 +267,7 @@ test('a member of workspace A querying workspace B dataset directly gets zero ro
     const ownerA = await signupAndGetSession(base, 'team-ownerA@example.com', { insforge });
     const memberA = await signupAndGetSession(base, 'team-memberA@example.com', { insforge });
     const workspaceA = await createTeamWorkspace(base, ownerA.token, 'Team A');
-    await invite(base, ownerA.token, workspaceA.id, 'team-memberA@example.com');
+    await inviteAndAccept(base, ownerA.token, workspaceA.id, memberA);
 
     const ownerB = await signupAndGetSession(base, 'team-ownerB@example.com', { insforge });
     const workspaceB = await createTeamWorkspace(base, ownerB.token, 'Team B');

@@ -300,8 +300,19 @@ export function createDb(insforge) {
       return insforge.select('workspace_invitations', { workspace_id: workspaceId });
     },
 
+    async getInvitationById(id) {
+      return insforge.selectOne('workspace_invitations', { id });
+    },
+
     async acceptInvitation(id) {
       const [invitation] = await insforge.update('workspace_invitations', { id }, { status: 'accepted' });
+      return invitation;
+    },
+
+    // 'revoked' doubles as "declined" — the status check constraint only
+    // allows pending/accepted/revoked.
+    async revokeInvitation(id) {
+      const [invitation] = await insforge.update('workspace_invitations', { id }, { status: 'revoked' });
       return invitation;
     },
   };

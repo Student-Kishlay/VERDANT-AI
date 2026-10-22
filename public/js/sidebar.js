@@ -122,6 +122,24 @@ async function refreshActiveDataset(container, workspaceId) {
   }
 }
 
+// The active-dataset pointer is browser-local and only set by uploading, so a
+// teammate who joined a workspace (or a new browser) would otherwise see
+// "None uploaded yet" despite the workspace having data. Fall back to the
+// workspace's most recent ready dataset. Must run before session-ready,
+// since every page reads the pointer in that handler.
+async function adoptLatestDataset(workspaceId) {
+  if (insforge.datasets.getActiveId(workspaceId)) return;
+  try {
+    const { datasets } = await insforge.datasets.list(workspaceId);
+    const latest = datasets
+      .filter((d) => d.status === 'ready')
+      .sort((a, b) => (a.uploaded_at < b.uploaded_at ? 1 : -1))[0];
+    if (latest) insforge.datasets.setActiveId(workspaceId, latest.id);
+  } catch {
+    // best-effort — pages fall back to their "no dataset" state
+  }
+}
+
 function buildTopbar(activeItem) {
   const header = el('div', { className: 'topbar' });
   const hamburger = el('button', {
@@ -145,7 +163,10 @@ function buildTopbar(activeItem) {
 async function init() {
   const session = await insforge.auth.getSession();
   if (!session) {
-    window.location.href = '/login.html';
+    // Keep where they were headed (e.g. an invitation email link) so login
+    // can send them back there.
+    const next = window.location.pathname + window.location.search;
+    window.location.href = `/login.html?next=${encodeURIComponent(next)}`;
     return;
   }
 
@@ -166,6 +187,7 @@ async function init() {
   topbarMount.replaceChildren(buildTopbar(activeItem));
 
   if (activeWorkspaceId) {
+    await adoptLatestDataset(activeWorkspaceId);
     refreshActiveDataset(sidebarMount.querySelector('.active-dataset'), activeWorkspaceId);
   }
 

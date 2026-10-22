@@ -62,6 +62,13 @@ export function createFakeInsforge() {
       return [...users.values()].find((u) => u.email.toLowerCase() === email.toLowerCase()) || null;
     },
 
+    // Records instead of sending, so tests can assert on invitation emails.
+    sentEmails: [],
+    async sendEmail(email) {
+      this.sentEmails.push(email);
+      return { success: true };
+    },
+
     async select(table, filters, { order, limit, offset = 0 } = {}) {
       let rows = tables[table].filter((row) => matches(row, filters));
       rows = applyOrder(rows, order);

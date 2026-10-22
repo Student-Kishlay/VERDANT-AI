@@ -10,7 +10,60 @@ const inviteError = document.getElementById('invite-error');
 const createWorkspaceForm = document.getElementById('create-workspace-form');
 const workspaceNameInput = document.getElementById('workspace-name');
 
+const myInvitationsSection = document.getElementById('my-invitations-section');
+const myInvitationsList = document.getElementById('my-invitations-list');
+const myInvitationsError = document.getElementById('my-invitations-error');
+
 let workspaceId = null;
+
+// Invitations addressed to the signed-in user's email. ?invite=<id> (the
+// link in the invitation email) highlights that one.
+async function loadMyInvitations() {
+  const { invitations } = await insforge.invitations.listMine();
+  const highlightId = new URLSearchParams(window.location.search).get('invite');
+  myInvitationsList.replaceChildren();
+  myInvitationsSection.hidden = invitations.length === 0;
+
+  if (highlightId && !invitations.some((i) => i.id === highlightId)) {
+    myInvitationsSection.hidden = false;
+    myInvitationsError.textContent =
+      'That invitation is no longer available, or it was sent to a different email than the one you are signed in with.';
+  }
+
+  for (const inv of invitations) {
+    const item = el('li', { className: inv.id === highlightId ? 'invitation-item highlighted' : 'invitation-item' });
+    const by = inv.invited_by ? ` (invited by ${inv.invited_by})` : '';
+    item.appendChild(el('span', { text: `${inv.workspace_name || 'A workspace'}${by}` }));
+
+    const accept = el('button', { className: 'btn', text: 'Accept' });
+    const decline = el('button', { className: 'btn btn-secondary', text: 'Decline' });
+    accept.type = decline.type = 'button';
+
+    accept.addEventListener('click', async () => {
+      myInvitationsError.textContent = '';
+      try {
+        const { workspace } = await insforge.invitations.accept(inv.id);
+        await insforge.workspaces.switchTo(workspace.id);
+        window.location.href = '/team.html';
+      } catch (err) {
+        myInvitationsError.textContent = err.message || 'Could not accept this invitation.';
+      }
+    });
+    decline.addEventListener('click', async () => {
+      myInvitationsError.textContent = '';
+      try {
+        await insforge.invitations.decline(inv.id);
+        await loadMyInvitations();
+      } catch (err) {
+        myInvitationsError.textContent = err.message || 'Could not decline this invitation.';
+      }
+    });
+
+    item.appendChild(accept);
+    item.appendChild(decline);
+    myInvitationsList.appendChild(item);
+  }
+}
 
 async function loadMembers() {
   const { members, pending_invitations: pending } = await insforge.workspaces.getMembers(workspaceId);
@@ -42,8 +95,11 @@ inviteForm.addEventListener('submit', async (e) => {
   if (!email) return;
 
   try {
-    await insforge.workspaces.invite(workspaceId, email);
+    const result = await insforge.workspaces.invite(workspaceId, email);
     inviteEmailInput.value = '';
+    if (result && result.email_sent === false) {
+      inviteError.textContent = `Invitation created, but the email to ${email} couldn't be sent. They can still accept it from the Team page after signing in with that email.${result.email_error ? ` Reason: ${result.email_error}` : ''}`;
+    }
     await loadMembers();
   } catch (err) {
     inviteError.textContent = err.message || 'Could not send this invitation.';
@@ -68,5 +124,5 @@ document.addEventListener('verdant:session-ready', async (e) => {
   inviteSection.hidden = !isOwner;
   memberOnlyNote.hidden = isOwner;
 
-  await loadMembers();
+  await Promise.all([loadMembers(), loadMyInvitations()]);
 });

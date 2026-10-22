@@ -1,9 +1,24 @@
+/* ── Filter bar: pinned to the top so the date range is always in reach ── */
 .filter-bar {
+  position: sticky;
+  top: 0.75rem;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+
+.filter-row {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.filter-row + .filter-row {
+  justify-content: flex-start;
 }
 
 .filter-bar .field {
@@ -17,20 +32,94 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   font-size: 0.9rem;
+  background: var(--color-card);
 }
 
-#filter-clear {
+.filter-bar .btn {
   height: 2.4rem;
 }
 
+.range-presets {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.preset {
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.45rem 0.8rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.preset:hover {
+  color: var(--color-text);
+}
+
+.preset[aria-pressed='true'] {
+  background: var(--color-card);
+  color: var(--color-accent-hover);
+  box-shadow: 0 1px 2px rgba(16, 25, 21, 0.12);
+}
+
+.export-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.range-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+/* ── Month-over-month badges under the KPI values ── */
+.mom-badge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.45rem;
+  min-height: 1.2rem;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.mom-change {
+  font-weight: 700;
+}
+
+.mom-up .mom-change {
+  color: var(--color-accent-hover);
+}
+
+.mom-down .mom-change {
+  color: var(--color-danger);
+}
+
+/* ── Charts ── */
 .chart-grid {
   display: grid;
   grid-template-columns: 2fr 1fr;
   gap: 1rem;
+  margin-bottom: 1rem;
 }
 
 .chart-card h3 {
   margin-bottom: 0.75rem;
+}
+
+.chart-card .section-hint {
+  margin: -0.4rem 0 0.6rem;
+  font-size: 0.8rem;
 }
 
 .chart-wrap {
@@ -38,8 +127,211 @@
   height: 280px;
 }
 
+/* ── Top products + customer value ── */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 1rem;
+}
+
+.detail-grid h3 {
+  margin-bottom: 0.75rem;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.rank-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.rank-table th {
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  padding: 0 0.5rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.rank-table td {
+  padding: 0.55rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.rank-table tr:last-child td {
+  border-bottom: none;
+}
+
+.rank-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rank-table .rank {
+  width: 2rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.rank-table .product {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.share-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 120px;
+}
+
+.share-track {
+  flex: 1;
+  height: 6px;
+  background: var(--color-bg);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.share-bar {
+  display: block;
+  height: 100%;
+  background: var(--color-brand-blue);
+  border-radius: 999px;
+}
+
+.share-pct {
+  width: 3rem;
+  text-align: right;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem 1rem;
+  margin: 0 0 1rem;
+}
+
+.metric-list dt {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  margin-bottom: 0.2rem;
+}
+
+.metric-list dd {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.metric-placeholder {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.spend-field {
+  margin-bottom: 0.5rem;
+}
+
+#cv-note {
+  font-size: 0.78rem;
+  margin: 0;
+}
+
+.pill-status-good {
+  background: var(--color-success-bg);
+  color: var(--color-accent-hover);
+}
+
+.pill-status-warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.pill-status-critical {
+  background: #fdecea;
+  color: var(--color-danger);
+}
+
 @media (max-width: 1024px) {
-  .chart-grid {
+  .chart-grid,
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .filter-bar {
+    position: static;
+  }
+
+  .filter-bar .field {
+    min-width: 0;
+    flex: 1 1 140px;
+  }
+
+  .metric-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Save as PDF (browser print) ── */
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  .app-layout {
+    display: block;
+  }
+
+  #sidebar-mount,
+  #topbar-mount,
+  .sidebar,
+  .topbar,
+  .range-presets,
+  .export-actions,
+  #filter-clear,
+  .spend-field,
+  #cv-note,
+  #category-mix-hint {
+    display: none !important;
+  }
+
+  .filter-bar {
+    position: static;
+    box-shadow: none;
+  }
+
+  .page-content {
+    padding: 0;
+  }
+
+  .card {
+    box-shadow: none;
+    break-inside: avoid;
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .chart-grid,
+  .detail-grid {
     grid-template-columns: 1fr;
   }
 }

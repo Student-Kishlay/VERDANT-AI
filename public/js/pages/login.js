@@ -48,7 +48,7 @@ form.addEventListener('submit', async (e) => {
     } else {
       await insforge.auth.signIn({ email, password });
     }
-    window.location.href = '/index.html';
+    window.location.href = nextPath();
   } catch (err) {
     errorEl.textContent = err.message || 'Something went wrong. Please try again.';
   } finally {
@@ -56,7 +56,13 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
+// Only same-origin paths (from sidebar.js's ?next=), never an absolute URL.
+function nextPath() {
+  const next = new URLSearchParams(window.location.search).get('next');
+  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/index.html';
+}
+
 (async function redirectIfAuthenticated() {
   const session = await insforge.auth.getSession();
-  if (session) window.location.href = '/index.html';
+  if (session) window.location.href = nextPath();
 })();

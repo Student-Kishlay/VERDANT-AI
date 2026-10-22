@@ -402,13 +402,17 @@ export of the dataset's cleaned rows.
 - `GET /api/workspaces/:id/members` — any member →
   `{ members: [{ user_id, display_name, email, role, joined_at }],
   pending_invitations: [{ invited_email, status: 'pending', created_at }] }`.
-- `POST /api/workspaces/:id/invitations` (`{ email }`) — **owner-only**. An
-  email matching an existing user grants membership immediately →
-  `{ status: 'joined', member: {...} }`; otherwise a `workspace_invitations`
-  row is created → `{ status: 'pending', invitation: {...} }`, and converts
-  to membership automatically the moment that exact email signs up (handled
-  in `POST /api/auth/signup`). Inviting the same pending email twice reuses
-  the existing invitation rather than duplicating it.
+- `POST /api/workspaces/:id/invitations` (`{ email }`) — **owner-only**.
+  Never grants membership directly: always creates (or reuses) a pending
+  `workspace_invitations` row and emails the invitee a link to
+  `/team.html?invite=<id>` → `{ status: 'pending', invitation: {...},
+  email_sent }`. `409 ALREADY_MEMBER` if they're already in the workspace.
+- `GET /api/invitations` — pending invitations addressed to the signed-in
+  user's (JWT) email → `{ invitations: [{ id, workspace_id, workspace_name,
+  invited_by, created_at }] }`.
+- `POST /api/invitations/:id/accept` / `.../decline` — only the invited
+  email can act on it (anyone else gets 404); accepting adds the member,
+  declining marks it `revoked`. Already-closed invitations → `409`.
 
 **Role enforcement added this milestone.** §12: *"owners can manage
 membership, delete datasets, revoke share links; members can view data, run

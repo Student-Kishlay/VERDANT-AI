@@ -126,5 +126,10 @@ export function createInsforgeClient({ baseUrl, apiKey, jwtPublicKey } = {}) {
       const { data: users } = await request('GET', `/api/auth/users?email=${encodeURIComponent(email)}`);
       return users.find((u) => u.email.toLowerCase() === email.toLowerCase()) || null;
     },
+
+    // InsForge's email API — used for workspace invitation emails.
+    async sendEmail({ to, subject, html }) {
+      return request('POST', '/api/email/send-raw', { body: { to, subject, html } });
+    },
   };
 }

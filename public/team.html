@@ -15,6 +15,13 @@
     <div class="app-main">
       <header id="topbar-mount"></header>
       <main class="page-content">
+        <section id="my-invitations-section" class="card" hidden>
+          <h3>Invitations for you</h3>
+          <p class="section-hint">You've been invited to join these workspaces. You'll only be added once you accept.</p>
+          <ul id="my-invitations-list" class="invitation-list"></ul>
+          <p class="form-error" id="my-invitations-error" role="alert"></p>
+        </section>
+
         <section class="card">
           <h3>Members of this workspace</h3>
           <div class="table-scroll">
@@ -33,7 +40,7 @@
 
         <section id="invite-section" class="card" hidden>
           <h3>Invite by email</h3>
-          <p class="section-hint">Only the workspace owner can invite members. If the email already has an account, access is granted immediately — otherwise they'll join automatically the moment they sign up.</p>
+          <p class="section-hint">Only the workspace owner can invite members. We'll email them an invitation — they join only after signing in with that email address and accepting it.</p>
           <form id="invite-form" class="invite-form">
             <input type="email" id="invite-email" placeholder="teammate@example.com" required />
             <button type="submit" class="btn">Invite</button>

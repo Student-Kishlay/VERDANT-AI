@@ -377,7 +377,7 @@ fresh issue.
 - `GET /api/workspaces/:id/shares` — every share in a workspace (`/shares.html`).
 - `POST /api/shares/:id/refresh` / `POST /api/shares/:id/revoke` —
   membership-checked against the share's own workspace.
-- `GET /public/shares/:token` — **the one and only file-serving path**, no
+- `GET /api/public/shares/:token` (alias `/public/shares/:token`) — **the one and only file-serving path**, no
   authentication. 404 if the token doesn't exist, 403 `REVOKED` /
   403 `EXPIRED` as appropriate, otherwise streams the file with the correct
   `Content-Type`. `share.url` in every response above is already this

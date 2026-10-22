@@ -836,7 +836,7 @@ function publicChatMessage(m) {
       workspace_id: share.workspace_id,
       dataset_id: share.dataset_id,
       report_type: share.report_type,
-      url: `/public/shares/${share.token}`,
+      url: `/api/public/shares/${share.token}`,
       created_at: share.created_at,
       expires_at: share.expires_at,
       revoked: share.revoked,
@@ -946,7 +946,9 @@ function publicChatMessage(m) {
   // Unauthenticated — the one and only file-serving path. Never resolves or
   // exposes the raw storage_path; the token is checked server-side and the
   // file streamed directly.
-  app.get('/public/shares/:token', async (req, res) => {
+  // Under /api/ so Netlify's /api/* rewrite reaches Express (anything else is
+  // served from public/ and 404s); the bare /public/ path stays for old links.
+  app.get(['/api/public/shares/:token', '/public/shares/:token'], async (req, res) => {
     const share = await db.getShareByToken(req.params.token);
     if (!share) return fail(res, 404, 'NOT_FOUND', 'This link is not valid.');
     if (share.revoked) return fail(res, 403, 'REVOKED', 'This link has been revoked.');

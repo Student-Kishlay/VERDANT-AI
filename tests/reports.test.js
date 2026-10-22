@@ -114,7 +114,7 @@ test('an expired share is 403 EXPIRED on next access', async () => {
     await db.refreshShare(share.id, { token: currentToken, expiresAt: new Date(Date.now() - 1000).toISOString() });
     const updated = await db.getShareById(share.id);
 
-    const res = await fetch(`${base}/public/shares/${updated.token}`);
+    const res = await fetch(`${base}/api/public/shares/${updated.token}`);
     const resBody = await res.json();
     assert.equal(res.status, 403);
     assert.equal(resBody.error.code, 'EXPIRED');

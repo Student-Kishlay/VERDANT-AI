@@ -3,10 +3,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--color-sidebar);
-  background-image: linear-gradient(180deg, rgba(15, 30, 50, 0.35), rgba(15, 30, 50, 0.55)), url('/assets/mountain-photo.jpg');
-  background-size: cover;
-  background-position: center;
+  background-color: var(--color-bg);
+  background-image: radial-gradient(circle at 50% 0%, rgba(18, 133, 92, 0.08), transparent 55%);
   padding: 1.5rem;
 }
 
@@ -14,18 +12,20 @@
   width: 100%;
   max-width: 380px;
   background: var(--color-card);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  padding: 2rem;
+  box-shadow: var(--shadow-raised);
+  padding: 2.25rem 2rem 2rem;
 }
 
 .auth-brand {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  margin-bottom: 1.5rem;
-  font-weight: 700;
-  font-size: 1.1rem;
+  margin-bottom: 1.75rem;
+  font-weight: 600;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
 }
 
 .auth-brand-mark {
@@ -34,25 +34,22 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
-  background: var(--color-brand-blue);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
   color: #fff;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .auth-card h2 {
-  font-size: 1.3rem;
-  margin-bottom: 1.25rem;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+  margin-bottom: 1.5rem;
 }
 
 .auth-card .btn {
   width: 100%;
   margin-top: 0.25rem;
-  background: var(--color-brand-blue);
-}
-
-.auth-card .btn:hover {
-  background: var(--color-brand-blue-hover);
+  padding: 0.65rem 1rem;
 }
 
 .password-input {

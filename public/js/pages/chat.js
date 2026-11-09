@@ -33,7 +33,7 @@ const compactNumber = new Intl.NumberFormat('en-US', { notation: 'compact', maxi
 const fullNumber = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 
 function seriesColors() {
-  return [cssVar('--color-accent', '#12855c'), cssVar('--color-brand-blue', '#4d78a2'), '#c27c0e', '#8a5cb8', '#c2410c', '#0e7490'];
+  return [cssVar('--color-accent', '#12855c'), cssVar('--color-brand-blue', '#2f5d8a'), '#c27c0e', '#8a5cb8', '#c2410c', '#0e7490'];
 }
 
 // chart = { type, title, labels, series: [{ name, values, style? }], x_label, y_label }

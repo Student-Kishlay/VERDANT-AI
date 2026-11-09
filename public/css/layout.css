@@ -1,15 +1,17 @@
 .app-layout {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 248px 1fr;
   min-height: 100vh;
 }
 
 .sidebar {
   background-color: var(--color-sidebar);
-  background-image: linear-gradient(180deg, rgba(15, 30, 50, 0.6), rgba(15, 30, 50, 0.82)), url('/assets/mountain-photo.jpg');
-  background-size: cover;
-  background-position: center;
+  border-right: 1px solid var(--color-sidebar-border);
   color: var(--color-sidebar-text);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   padding: 1.25rem 1rem;
@@ -20,8 +22,10 @@
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  font-weight: 700;
-  font-size: 1.05rem;
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  padding: 0 0.25rem;
 }
 
 .sidebar-brand-mark {
@@ -30,20 +34,33 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 8px;
-  background: var(--color-brand-blue);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
   color: #fff;
-  font-weight: 800;
+  font-weight: 700;
+  font-size: 0.9rem;
 }
 
 .workspace-switcher select.workspace-select {
   width: 100%;
-  background: var(--color-sidebar-active);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--color-sidebar-text);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--color-sidebar-border);
   border-radius: var(--radius-md);
   padding: 0.5rem 0.6rem;
   font-size: 0.85rem;
+}
+
+.workspace-switcher select.workspace-select {
+  font-weight: 600;
+}
+
+/* Native option lists render on a light background, so the sidebar's light
+   text would be nearly invisible there — use dark text instead. */
+.workspace-switcher select.workspace-select option {
+  background: var(--color-card);
+  color: var(--color-text);
+  font-weight: 600;
 }
 
 .active-dataset {
@@ -51,7 +68,8 @@
   flex-direction: column;
   gap: 0.15rem;
   padding: 0.6rem 0.7rem;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--color-sidebar-border);
   border-radius: var(--radius-md);
 }
 
@@ -91,23 +109,24 @@
 }
 
 .sidebar-nav-item {
-  padding: 0.6rem 0.75rem;
+  padding: 0.5rem 0.75rem;
   border-radius: var(--radius-md);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 500;
   color: var(--color-sidebar-text-dim);
-  border-left: 3px solid transparent;
+  box-shadow: inset 2px 0 0 transparent;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .sidebar-nav-item:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.05);
   color: var(--color-sidebar-text);
 }
 
 .sidebar-nav-item.active {
   background: var(--color-sidebar-active);
   color: #fff;
-  border-left-color: var(--color-accent);
-  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
 .user-chip {
@@ -115,7 +134,7 @@
   align-items: center;
   gap: 0.6rem;
   padding-top: 0.75rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--color-sidebar-border);
 }
 
 .user-chip-avatar {
@@ -127,7 +146,8 @@
   border-radius: 50%;
   background: var(--color-accent);
   color: #fff;
-  font-weight: 700;
+  font-weight: 600;
+  font-size: 0.85rem;
   flex-shrink: 0;
 }
 
@@ -179,7 +199,9 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 1.25rem 2rem 0.75rem;
+  padding: 1.1rem 2rem;
+  background: var(--color-card);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .hamburger {
@@ -194,8 +216,10 @@
 }
 
 .page-content {
-  padding: 0 2rem 2rem;
+  padding: 1.75rem 2rem 2rem;
   flex: 1;
+  width: 100%;
+  max-width: 1440px;
 }
 
 /* Responsive: sidebar collapses to a top bar below ~768px */
@@ -216,6 +240,7 @@
   .sidebar {
     position: fixed;
     inset: 0 30% 0 0;
+    height: auto;
     transform: translateX(-100%);
     transition: transform 0.2s ease;
     z-index: 40;

@@ -20,7 +20,7 @@ const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', cu
 const compactCurrency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact' });
 
 const SERIES_COLOR = '#12855c'; // --color-accent
-const BAR_COLOR = '#4d78a2'; // --color-brand-blue
+const BAR_COLOR = '#2f5d8a'; // --color-brand-blue
 const BAR_MUTED = '#c9d6e3';
 
 let workspaceId = null;

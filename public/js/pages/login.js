@@ -59,7 +59,7 @@ form.addEventListener('submit', async (e) => {
 // Only same-origin paths (from sidebar.js's ?next=), never an absolute URL.
 function nextPath() {
   const next = new URLSearchParams(window.location.search).get('next');
-  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/index.html';
+  return next && /^\/(?![/\\])/.test(next) ? next : '/index.html';
 }
 
 (async function redirectIfAuthenticated() {

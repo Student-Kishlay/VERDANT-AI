@@ -1,0 +1,4 @@
+cd D:\verdant-bi
+npm run dev
+
+http://localhost:5175/login.html
